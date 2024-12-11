@@ -1,30 +1,49 @@
-import React, { useState, useEffect } from "react";
-import { FaPlus, FaTrashAlt } from "react-icons/fa"; // Import the icons
+import React, { useState, useEffect, useRef } from "react";
+import { FaPlus, FaTrashAlt } from "react-icons/fa";
+import { RxCross2 } from "react-icons/rx";
+import { IoCloseCircle } from "react-icons/io5";
+import Loader from "./Loader";
+
 import "./styles.css";
 
+const timeData = {
+  in1: "",
+  out1: "",
+  in2: "",
+  out2: "",
+  in3: "",
+  out3: "",
+  in4: "",
+  out4: "",
+  in5: "",
+  out5: "",
+  in6: "",
+  out6: "",
+};
+
+const dayOption = [
+  { key: "Full Day (08:30 Hour)", value: 510 },
+  { key: "Half Day (04:15 Hour)", value: 255 },
+  { key: "Early Leave (06:25 Hour)", value: 385 },
+];
+
 function App() {
-  const [times, setTimes] = useState({
-    in1: "",
-    out1: "",
-    in2: "",
-    out2: "",
-    in3: "",
-    out3: "",
-    in4: "",
-    out4: "",
-    in5: "",
-    out5: "",
-    in6: "",
-    out6: "",
+  const [loading, setLoading] = useState(true);
+  const [times, setTimes] = useState(timeData);
+  const [dayOptions, setDayOptions] = useState(dayOption);
+  const [customWorkingHours, setCustomWorkingHours] = useState({
+    time: "",
+    visible: false,
+    error: false,
   });
-  const [totalTime, setTotalTime] = useState("00:00");
-  const [totalUpToLastInTime, setTotalUpToLastInTime] = useState("00:00");
-  const [endTime, setEndTime] = useState("00:00");
   const [currentDate, setCurrentDate] = useState(new Date().toLocaleDateString());
-  const [leaveType, setLeaveType] = useState("");
+  const [totalTime, setTotalTime] = useState(0); // Total working minutes
+  const [endTime, setEndTime] = useState("00:00"); // When work time finishes
+  const [dayType, setDayType] = useState(510);
   const [missingFields, setMissingFields] = useState({});
-  const [totalTimeMet, setTotalTimeMet] = useState(false);
-  const [currentTime, setCurrentTime] = useState("00:00");
+  const [timeIsCompleted, setTimeIsCompleted] = useState(false);
+  const [lastPunchType, setLastPunchType] = useState("out");
+  const lastCheckedTimeRef = useRef(null);
 
   const getCurrentHoursMinutes = () => {
     const now = new Date();
@@ -43,9 +62,11 @@ function App() {
     }
   };
 
-  const handleDayChange = (event) => {
-    setLeaveType(event.target.value);
-    localStorage.setItem("leaveType", event.target.value);
+  const clearLocalStorage = () => {
+    localStorage.removeItem("times");
+    setTimes(timeData);
+    setEndTime("00:00");
+    setTotalTime(0);
   };
 
   const isFieldEnabled = (name) => {
@@ -62,12 +83,55 @@ function App() {
     }
   };
 
-  const getLastInTime = (times) => {
-    const lastInKey = Object.keys(times)
-      .reverse()
-      .find((key) => key.startsWith("in") && times[key] !== "");
+  const handleDayChange = (event) => {
+    setDayType(event.target.value);
+    localStorage.setItem("dayType", event.target.value);
+    calculateTotalTime(times, event.target.value);
+  };
 
-    return lastInKey ? times[lastInKey] : null;
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    const tempTime = { ...times, [name]: value };
+    setTimes(tempTime);
+    localStorage.setItem("times", JSON.stringify(tempTime));
+    calculateTotalTime(tempTime, dayType);
+  };
+
+  const addCurrentTime = (name) => {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, "0");
+    const minutes = now.getMinutes().toString().padStart(2, "0");
+    const currentTime = `${hours}:${minutes}`;
+    const tempTime = { ...times, [name]: currentTime };
+    setTimes(tempTime);
+    localStorage.setItem("times", JSON.stringify(tempTime));
+    calculateTotalTime(tempTime, dayType);
+  };
+
+  const handleClear = (name) => {
+    const tempTime = { ...times, [name]: "" };
+    setTimes(tempTime);
+    localStorage.setItem("times", JSON.stringify(tempTime));
+    calculateTotalTime(tempTime, dayType);
+  };
+
+  const resetTimesIfNewDay = () => {
+    const storedDate = localStorage.getItem("currentDate");
+    const today = new Date().toLocaleDateString();
+
+    if (storedDate !== today) {
+      clearLocalStorage();
+      localStorage.setItem("currentDate", today);
+      setCurrentDate(today);
+    }
+  };
+
+  const getLastTime = (times, type) => {
+    const lastKey = Object.keys(times)
+      .reverse()
+      .find((key) => key.startsWith(type) && times[key] !== "");
+
+    return lastKey ? times[lastKey] : null;
   };
 
   const getLastEntryType = (times) => {
@@ -81,13 +145,9 @@ function App() {
     return null;
   };
 
-  const calculateDurationFromLastIn = (times, lastTimeTotal) => {
-    const lastEntryType = getLastEntryType(times);
-    const lastTotalUpToLastInTime = lastTimeTotal ? lastTimeTotal : totalUpToLastInTime;
-
+  const calculateDurationFromLastIn = (times, lastTimeTotal, lastEntryType) => {
     if (lastEntryType === "in") {
-      const lastInTime = getLastInTime(times);
-
+      const lastInTime = getLastTime(times, "in");
       if (lastInTime) {
         const [lastInHours, lastInMinutes] = lastInTime.split(":").map(Number);
         const lastInDate = new Date();
@@ -97,53 +157,22 @@ function App() {
         const diffMs = now - lastInDate;
         const diffMins = Math.floor(diffMs / 60000);
 
-        const [prevHours, prevMinutes] = lastTotalUpToLastInTime.split(":").map(Number);
+        const newTotalMinutes = lastTimeTotal + diffMins;
 
-        const newTotalMinutes = prevHours * 60 + prevMinutes + diffMins;
-        const newHours = Math.floor(newTotalMinutes / 60);
-        const newMinutes = newTotalMinutes % 60;
-
-        setTotalTime(
-          `${newHours.toString().padStart(2, "0")}:${newMinutes.toString().padStart(2, "0")}`
-        );
+        return newTotalMinutes;
       } else {
-        setTotalTime("00:00");
+        return lastTimeTotal;
       }
+    } else {
+      return lastTimeTotal;
     }
   };
 
-  // Function to find the last recorded time from the "Out" or "In" times
-  function findLastRecordedTime(times) {
-    const allTimes = [];
-
-    // Collect all non-empty times
-    Object.keys(times).forEach((key) => {
-      if (times[key] && times[key].trim() !== "--:--") {
-        allTimes.push(times[key]);
-      }
-    });
-
-    // Convert to date objects for easy comparison
-    const sortedTimes = allTimes
-      .map((time) => {
-        const [hours, minutes] = time.split(":").map(Number);
-        return new Date(2024, 0, 1, hours, minutes); // Use a placeholder date
-      })
-      .sort((a, b) => a - b); // Sort by time
-
-    // Return the latest time in HH:MM format
-    const lastTime = sortedTimes[sortedTimes.length - 1];
-    return lastTime
-      ? `${lastTime.getHours().toString().padStart(2, "0")}:${lastTime
-          .getMinutes()
-          .toString()
-          .padStart(2, "0")}`
-      : null; // Return null if no valid times
-  }
-
-  const calculateTotalTime = (times) => {
+  const calculateTotalTime = (times, dayType) => {
+    console.log(dayType, "test++++");
     let totalMinutes = 0;
-    const newMissingFields = {}; // Track missing fields
+    let totalPunchMinutes = 0;
+    const newMissingFields = {};
 
     for (let i = 1; i <= 6; i++) {
       const inTime = times[`in${i}`];
@@ -163,318 +192,398 @@ function App() {
             `Out time (${outMinutesTotal}) should be greater than In time (${inMinutesTotal})`
           );
         }
-      }
-      // else if (inTime || outTime) {
-      //   newMissingFields[`in${i}`] = !inTime;
-      //   newMissingFields[`out${i}`] = !outTime;
-      // }
-      else if (inTime && !outTime) {
-        newMissingFields[`out${i}`] = true; // Missing outTime for the corresponding inTime
+      } else if (inTime && !outTime) {
+        newMissingFields[`out${i}`] = true;
       } else if (!inTime && outTime) {
-        // Highlight only if there is no valid preceding pair
         const prevOutTime = times[`out${i - 1}`];
         if (!prevOutTime) {
-          newMissingFields[`in${i}`] = true; // Missing inTime for the corresponding outTime
+          newMissingFields[`in${i}`] = true;
         }
       }
     }
-    setMissingFields(newMissingFields); // Update state with missing fields
-
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
+    setMissingFields(newMissingFields);
     const lastEntryType = getLastEntryType(times);
-    const newTime = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
-    if (lastEntryType === "out") {
-      setTotalUpToLastInTime(newTime);
-      setTotalTime(newTime);
-    } else {
-      calculateDurationFromLastIn(times, newTime);
-    }
-    let totalRequiredMinutes;
-    if (leaveType == "earlyLeave") {
-      totalRequiredMinutes = 6 * 60 + 23;
-    } else if (leaveType == "halfDay") {
-      totalRequiredMinutes = 4 * 60 + 15;
-    } else {
-      totalRequiredMinutes = 8 * 60 + 30;
-    }
+    setLastPunchType(lastEntryType);
+    totalPunchMinutes = totalMinutes;
+    totalMinutes = calculateDurationFromLastIn(times, totalMinutes, lastEntryType);
 
-    // Determine if the total time meets the required time
-    const meetsRequirement = totalMinutes >= totalRequiredMinutes;
-    setTotalTimeMet(meetsRequirement);
-
-    const remainingMinutes = totalRequiredMinutes - totalMinutes;
-    const lastRecordedTime = findLastRecordedTime(times);
+    const remainingMinutes = dayType - totalMinutes;
+    const lastRecordedTime = getLastTime(times, lastEntryType);
 
     if (!lastRecordedTime) {
       const currentTime = new Date();
+      let endDate = new Date(currentTime.getTime() + remainingMinutes * 60000);
 
-      // Calculate end time by adding the required minutes based on leave type
-      let endDate = new Date(currentTime.getTime() + remainingMinutes * 60000); // Add remaining minutes in milliseconds
-
-      // Get the hours and minutes from the end date
       const endHours = endDate.getHours().toString().padStart(2, "0");
       const endMinutes = endDate.getMinutes().toString().padStart(2, "0");
 
-      // Set the end time based on the calculated time
       setEndTime(`${endHours}:${endMinutes}`);
-
-      setTotalTime(
-        `${Math.floor(totalMinutes / 60)
-          .toString()
-          .padStart(2, "0")}:${(totalMinutes % 60).toString().padStart(2, "0")}`
-      );
-    }
-
-    if (remainingMinutes > 0 && lastRecordedTime) {
+    } else if (lastEntryType == "in") {
       const [lastHours, lastMinutes] = lastRecordedTime.split(":").map(Number);
       const lastTotalMinutes = lastHours * 60 + lastMinutes;
 
-      // Add remaining minutes to the last recorded time
-      const endTotalMinutes = lastTotalMinutes + remainingMinutes;
+      const endTotalMinutes =
+        lastTotalMinutes + totalMinutes + remainingMinutes - totalPunchMinutes;
       const endHours = Math.floor(endTotalMinutes / 60);
       const endMinutes = endTotalMinutes % 60;
 
       setEndTime(
         `${endHours.toString().padStart(2, "0")}:${endMinutes.toString().padStart(2, "0")}`
       );
-      setTotalTime(
-        `${Math.floor(totalMinutes / 60)
-          .toString()
-          .padStart(2, "0")}:${(totalMinutes % 60).toString().padStart(2, "0")}`
-      );
-    } else {
-      // If total required time is already met
-      setTotalTime(
-        `${Math.floor(totalMinutes / 60)
-          .toString()
-          .padStart(2, "0")}:${(totalMinutes % 60).toString().padStart(2, "0")}`
-      );
     }
 
-    // OLD CODE
-    // if (remainingMinutes) {
-    //   const lastInTime = getLastInTime(times);
-
-    //   if (lastInTime) {
-    //     const [lastInHours, lastInMinutes] = lastInTime.split(":").map(Number);
-    //     const lastInTotalMinutes = lastInHours * 60 + lastInMinutes;
-
-    //     const endTotalMinutes = lastInTotalMinutes + remainingMinutes;
-    //     const endHours = Math.floor(endTotalMinutes / 60);
-    //     const endMinutes = endTotalMinutes % 60;
-
-    //     setEndTime(
-    //       `${endHours.toString().padStart(2, "0")}:${endMinutes.toString().padStart(2, "0")}`
-    //     );
-    //   } else {
-    //     console.error("Invalid format for lastInTime. Unable to calculate end time.");
-    //     setTotalTime("00:00")
-    //     setEndTime("00:00"); // Default or fallback value for endTime
-    //   }
-    // }
+    setTotalTime(totalMinutes);
+    setTimeIsCompleted(totalMinutes >= dayType);
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    const tempTime = { ...times, [name]: value };
-    setTimes(tempTime);
-    calculateTotalTime(tempTime);
-    localStorage.setItem("times", JSON.stringify(tempTime));
+  const addMoreCard = (times) => {
+    const currentPair = Object.keys(times)?.length / 2;
+    const tempTimes = {
+      ...times,
+      [`in${currentPair + 1}`]: "",
+      [`out${currentPair + 1}`]: "",
+    };
+    setTimes(tempTimes);
+    localStorage.setItem("times", JSON.stringify(tempTimes));
   };
 
-  const handleTimeClick = (name) => {
-    const now = new Date();
-    const hours = now.getHours().toString().padStart(2, "0");
-    const minutes = now.getMinutes().toString().padStart(2, "0");
-    const currentTime = `${hours}:${minutes}`;
-    const tempTime = { ...times, [name]: currentTime };
-    setTimes(tempTime);
-    calculateTotalTime(tempTime);
-    localStorage.setItem("times", JSON.stringify(tempTime));
-  };
+  const removeCard = (times, key) => {
+    const tempTimes = { ...times };
+    const pairNumber = key.split("out")?.[1];
 
-  const handleClear = (name) => {
-    const tempTime = { ...times, [name]: "" };
-    setTimes(tempTime);
-    calculateTotalTime(tempTime);
-    localStorage.setItem("times", JSON.stringify(tempTime));
-  };
-
-  const clearLocalStorage = () => {
-    localStorage.removeItem("times");
-    setTimes({
-      in1: "",
-      out1: "",
-      in2: "",
-      out2: "",
-      in3: "",
-      out3: "",
-      in4: "",
-      out4: "",
-      in5: "",
-      out5: "",
-      in6: "",
-      out6: "",
-    });
-    setEndTime("");
-  };
-
-  const resetTimesIfNewDay = () => {
-    const storedDate = localStorage.getItem("currentDate");
-    const today = new Date().toLocaleDateString();
-
-    if (storedDate !== today) {
-      clearLocalStorage();
-      localStorage.setItem("currentDate", today);
-      setCurrentDate(today);
+    if (tempTimes[`in${pairNumber}`] || tempTimes[`out${pairNumber}`]) {
+      calculateTotalTime(tempTimes, dayType);
     }
+
+    delete tempTimes[`in${pairNumber}`];
+    delete tempTimes[`out${pairNumber}`];
+    setTimes(tempTimes);
+    localStorage.setItem("times", JSON.stringify(tempTimes));
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const chm = getCurrentHoursMinutes();
-      if (chm != currentTime) {
-        calculateDurationFromLastIn(times, null);
-        setCurrentTime(chm);
+  const handleCustomWorkingHours = (e) => {
+    const input = e.target.value;
+
+    if (/^[0-9:]*$/.test(input)) {
+      if (input.length === 2 && !input.includes(":")) {
+        setCustomWorkingHours((prev) => ({
+          ...prev,
+          time: input + ":",
+        }));
+      } else if (input.length <= 5) {
+        setCustomWorkingHours((prev) => ({
+          ...prev,
+          time: input,
+        }));
       }
-    }, 1000);
+    }
+  };
 
-    return () => clearInterval(interval);
-  }, [times]);
+  const handleAddCustomTime = (customWorkingHours) => {
+    const [hours, minutes] = customWorkingHours.time.split(":");
+    if (
+      hours !== undefined &&
+      minutes !== undefined &&
+      hours.length === 2 &&
+      minutes.length === 2 &&
+      parseInt(hours, 10) >= 0 &&
+      parseInt(hours, 10) <= 23 &&
+      parseInt(minutes, 10) >= 0 &&
+      parseInt(minutes, 10) <= 59
+    ) {
+      let totalMinutes = Number(hours) * 60 + Number(minutes);
+      setCustomWorkingHours({
+        visible: true,
+        time: `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`,
+      });
+      setDayOptions([
+        ...dayOption,
+        {
+          key: `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`,
+          value: totalMinutes,
+        },
+      ]);
+      setDayType(totalMinutes);
+      calculateTotalTime(times, totalMinutes);
+      localStorage.setItem("customHours", `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`);
+    } else {
+      setCustomWorkingHours({
+        time: "",
+        error: true,
+        visible: true,
+      });
+    }
+  };
 
-  useEffect(() => {
-    calculateTotalTime(times);
-  }, [times]);
-
-  useEffect(() => {
-    calculateTotalTime(times);
-  }, [leaveType]);
+  const handleRemoveCustomTime = () => {
+    setCustomWorkingHours({ visible: false, time: "", error: false });
+    setDayType(510);
+    setDayOptions(dayOption);
+    calculateTotalTime(times, 510);
+    localStorage.removeItem("customHours");
+  };
 
   useEffect(() => {
     const storedTimes = localStorage.getItem("times");
     const storedDate = localStorage.getItem("currentDate");
+    let dayTypes = Number(localStorage.getItem("dayType"));
+    let customHours = localStorage.getItem("customHours");
     const today = new Date().toLocaleDateString();
-    setLeaveType(localStorage.getItem("leaveType"));
+    setDayType(dayTypes ? dayTypes : 510);
 
     if (storedDate === today) {
       if (storedTimes) {
         setTimes(JSON.parse(storedTimes));
-        calculateTotalTime(JSON.parse(storedTimes));
+        if (customHours) {
+          customHours = {
+            time: customHours,
+          };
+          handleAddCustomTime(customHours);
+        } else {
+          calculateTotalTime(JSON.parse(storedTimes), dayTypes ? dayTypes : 510);
+        }
       }
     } else {
       clearLocalStorage();
       localStorage.setItem("currentDate", today);
       setCurrentDate(today);
     }
+
     const interval = setInterval(() => {
       resetTimesIfNewDay();
     }, 60000);
 
-    return () => clearInterval(interval);
-  }, []);
+    const intervalCalculateTime = setInterval(() => {
+      const currentHoursMinutes = getCurrentHoursMinutes();
 
+      if (currentHoursMinutes !== lastCheckedTimeRef.current && lastPunchType != "out") {
+        lastCheckedTimeRef.current = currentHoursMinutes;
+        calculateTotalTime(times, dayType);
+      }
+    }, 1000);
+
+    const LoaderTimer = setTimeout(() => {
+      setLoading(false);
+    }, 800);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(intervalCalculateTime);
+      clearTimeout(LoaderTimer);
+    };
+  }, []);
+  console.log(dayType);
   return (
     <div
       className="App"
       style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}
     >
-      <div className="dropdown-container">
-        <div className="time-label">Date: {currentDate}</div>
+      {loading ? (
+        <Loader />
+      ) : (
+        <>
+          <div className="header-container">
+            <div className="time-label">Date: {currentDate.replaceAll("/", "-")}</div>
 
-        <select
-          value={leaveType}
-          onChange={handleDayChange}
-          className="time-select"
-          placeholder="Select an option"
-        >
-          <option value="">Full Day</option>
-          <option value="halfDay">Half Day</option>
-          <option value="earlyLeave">Early Leave</option>
-        </select>
-      </div>
+            <div className="card-hours-container responsible-flex">
+              <div>
+                {customWorkingHours.visible ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                    {customWorkingHours.error && (
+                      <div class="tooltip">
+                        <span class="tooltip-text">Invalid Format(Must be in "HH:mm")</span>
+                      </div>
+                    )}
+                    <input
+                      type="text"
+                      placeholder="HH:mm"
+                      value={customWorkingHours.time}
+                      onChange={handleCustomWorkingHours}
+                      className="time-select-text"
+                    />
+                    <button
+                      className="add"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        backgroundColor: "#e1e9f4",
+                        margin: 0,
+                        height: "35px",
+                      }}
+                      onClick={() => {
+                        handleAddCustomTime(customWorkingHours);
+                      }}
+                    >
+                      <FaPlus color="#0085ca" />
+                    </button>
+                    <button
+                      className="remove"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        backgroundColor: "#ffe2e2",
+                        margin: 0,
+                        height: "35px",
+                      }}
+                      onClick={() => {
+                        handleRemoveCustomTime(customWorkingHours);
+                      }}
+                    >
+                      <IoCloseCircle size={20} color="#e0364e" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="add-more-card"
+                    style={{ height: "35px !important" }}
+                    onClick={() => {
+                      setCustomWorkingHours({ visible: true });
+                    }}
+                  >
+                    <FaPlus color="#0085ca" style={{ marginRight: "5px" }} /> Custom Working hours
+                  </button>
+                )}
+              </div>
 
-      <div className="timesheet-container">
-        {Object.entries(times).map(([key, value], i) => {
-          let isDisabled = isFieldEnabled(key);
-          return (
-            <div
-              className={`time-box ${isDisabled ? "disabled_box" : ""} ${
-                missingFields[key] ? "missing-field" : ""
-              }`}
-              key={i}
-              style={
-                {
-                  // backgroundColor: colors[i % colors.length]
-                }
-              } // Assign colors in a loop
-            >
-              <h3 style={{ margin: "0px", marginBottom: "0.5rem" }}>{transformTimeLabel(key)}</h3>
-              <input
-                type="time"
-                name={key}
-                value={value}
-                onChange={handleChange}
-                disabled={isDisabled}
-              />
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  gap: "10px",
-                  backgroundColor: "transparent",
-                }}
+              <select
+                value={dayType}
+                onChange={handleDayChange}
+                className="time-select"
+                placeholder="Select an option"
+                style={{ width: "200px !important" }}
               >
+                {dayOptions?.map((op) => {
+                  return (
+                    <option key={`${op.key}_${op.value}`} value={op.value}>
+                      {op.key}
+                    </option>
+                  );
+                })}
+              </select>
+
+              <div>
                 <button
-                  className="add"
-                  style={{ display: "flex", alignItems: "center", backgroundColor: "#e1e9f4" }}
-                  onClick={() => handleTimeClick(key)}
-                  disabled={isDisabled}
+                  className="add-more-card"
+                  style={{ height: "35px !important" }}
+                  onClick={() => addMoreCard(times)}
                 >
-                  <FaPlus color="#0085ca" style={{ marginRight: "5px" }} /> Add
-                </button>
-                <button
-                  className="remove"
-                  style={{ display: "flex", alignItems: "center", backgroundColor: "#ffe2e2" }}
-                  onClick={() => handleClear(key)}
-                  disabled={isDisabled}
-                >
-                  <FaTrashAlt color="#e0364e" style={{ marginRight: "5px" }} /> Clear
+                  <FaPlus color="#0085ca" style={{ marginRight: "5px" }} /> Add More Cards
                 </button>
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      <div className="time-selection-container">
-        <div className="time-item">
-          <div className="time-label">Total Time</div>
-          <div className={`time-value ${totalTimeMet ? "time-value-green" : ""}`}>
-            {totalTime ? totalTime : "00:00"}
           </div>
-        </div>
-        <div className="time-item">
-          <div className="time-label">Time Finish On</div>
-          <div className="time-value">
-            {endTime && endTime.includes(":")
-              ? new Date(2024, 0, 1, ...endTime.split(":").map(Number)).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "00:00"}
-          </div>
-        </div>
+          <div className="timesheet-container">
+            {Object.entries(times).map(([key, value], i) => {
+              let isDisabled = isFieldEnabled(key);
+              const keyIncludesOut = key.includes("out");
+              const showDeleteButton = i + 1 === Object.keys(times)?.length && keyIncludesOut;
+              return (
+                <div
+                  className={`time-box ${isDisabled ? "disabled_box" : ""} ${
+                    missingFields[key] ? "missing-field" : ""
+                  }`}
+                  style={{ position: "relative" }}
+                  key={i}
+                >
+                  {i > 11 && showDeleteButton && (
+                    <div
+                      style={{ position: "absolute", top: "0.5rem" }}
+                      className="remove-card"
+                      onClick={() => removeCard(times, key)}
+                    >
+                      <RxCross2 />
+                    </div>
+                  )}
 
-        <div className="button-container">
-          <button className="calculate-btn" onClick={() => calculateTotalTime(times)}>
-            Calculate Total Time
-          </button>
-          <button className="clear-btn" onClick={clearLocalStorage}>
-            Clear Time
-          </button>
-        </div>
-      </div>
+                  <div>
+                    <h3 style={{ margin: "0px", marginBottom: "0.5rem" }}>
+                      {transformTimeLabel(key)}
+                    </h3>
+                    <input
+                      type="time"
+                      name={key}
+                      value={value}
+                      max={getCurrentHoursMinutes()}
+                      onChange={handleInputChange}
+                      disabled={isDisabled}
+                    />
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        gap: "10px",
+                        backgroundColor: "transparent",
+                      }}
+                    >
+                      <button
+                        className="add"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          backgroundColor: "#e1e9f4",
+                        }}
+                        onClick={() => addCurrentTime(key)}
+                        disabled={isDisabled}
+                      >
+                        <FaPlus color="#0085ca" style={{ marginRight: "5px" }} /> Add
+                      </button>
+                      <button
+                        className="remove"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          backgroundColor: "#ffe2e2",
+                        }}
+                        onClick={() => handleClear(key)}
+                        disabled={isDisabled}
+                      >
+                        <FaTrashAlt color="#e0364e" style={{ marginRight: "5px" }} /> Clear
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="time-selection-container">
+            <div className="time-item">
+              <div className="time-label">Total Time</div>
+              <div className={`time-value ${timeIsCompleted ? "time-value-green" : ""}`}>
+                {totalTime
+                  ? `${Math.floor(totalTime / 60)
+                      ?.toString()
+                      .padStart(2, "0")}:${(totalTime % 60)?.toString().padStart(2, "0")}`
+                  : "00:00"}
+              </div>
+            </div>
+            <div className="time-item">
+              <div className="time-label">Time Finish On</div>
+              <div
+                className="time-value"
+                style={{
+                  textDecoration: getLastEntryType(times) === "out" ? "line-through" : "none",
+                }}
+              >
+                {endTime ? endTime : "00:00"}
+              </div>
+            </div>
+
+            <div className="button-container">
+              <button className="calculate-btn" onClick={() => calculateTotalTime(times, dayType)}>
+                Calculate Total Time
+              </button>
+              <button
+                className="clear-btn"
+                onClick={() => {
+                  if (confirm("Would you like to clear it?")) clearLocalStorage();
+                }}
+              >
+                Clear Time
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
