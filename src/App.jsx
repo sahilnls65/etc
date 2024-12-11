@@ -487,6 +487,7 @@ function App() {
                 >
                   {i > 11 && showDeleteButton && (
                     <div
+                      title="Remove card pair"
                       style={{ position: "absolute", top: "0.5rem" }}
                       className="remove-card"
                       onClick={() => removeCard(times, key)}
@@ -516,6 +517,7 @@ function App() {
                       }}
                     >
                       <button
+                        title="Add current time"
                         className="add"
                         style={{
                           display: "flex",
@@ -528,6 +530,7 @@ function App() {
                         <FaPlus color="#0085ca" style={{ marginRight: "5px" }} /> Add
                       </button>
                       <button
+                        title="Remove current card time"
                         className="remove"
                         style={{
                           display: "flex",
@@ -564,7 +567,21 @@ function App() {
                   textDecoration: getLastEntryType(times) === "out" ? "line-through" : "none",
                 }}
               >
-                {endTime ? endTime : "00:00"}
+                {new Date(
+                  2024,
+                  1,
+                  1,
+                  Number(endTime?.split(":")?.[0]),
+                  Number(endTime?.split(":")?.[1])
+                ).toLocaleTimeString() === "Invalid Date"
+                  ? "00:00"
+                  : new Date(
+                      2024,
+                      1,
+                      1,
+                      Number(endTime?.split(":")?.[0]),
+                      Number(endTime?.split(":")?.[1])
+                    ).toLocaleTimeString()}
               </div>
             </div>
 
