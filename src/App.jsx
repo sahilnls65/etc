@@ -24,7 +24,10 @@ const timeData = {
 const dayOption = [
   { key: "Full Day (08:30 Hour)", value: 510 },
   { key: "Half Day (04:15 Hour)", value: 255 },
-  { key: "Early Leave (06:25 Hour)", value: 385 },
+  { key: "Early Leave (06:30 Hour)", value: 390 },
+  { key: "Full Day (08:00 Hour)", value: 480 },
+  { key: "Half Day (04:00 Hour)", value: 240 },
+  { key: "Early Leave (06:00 Hour)", value: 360 },
 ];
 
 function App() {
