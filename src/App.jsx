@@ -48,6 +48,37 @@ function App() {
   const [lastPunchType, setLastPunchType] = useState("out");
   const lastCheckedTimeRef = useRef(null);
 
+  const [completedDuration, setCompletedDuration] = useState(""); // HH:mm or HH:mm:ss
+  const [remainingFinishTime, setRemainingFinishTime] = useState("");
+  const [completedError, setCompletedError] = useState(false);
+
+  const handleCompletedDurationChange = (e) => {
+    let value = e.target.value.replace(/[^\d:]/g, ""); // Remove non-digit and non-colon characters
+
+    // Handle HH:mm mask
+    if (value.length === 0) {
+      setCompletedDuration("");
+      setCompletedError(false);
+    } else if (value.length <= 2 && !value.includes(":")) {
+      setCompletedDuration(value);
+      setCompletedError(false);
+    } else if (value.length === 3 && !value.includes(":")) {
+      // Insert colon after 2 digits
+      setCompletedDuration(value.slice(0, 2) + ":" + value.slice(2));
+      setCompletedError(false);
+    } else if (value.includes(":")) {
+      const parts = value.split(":");
+      // Limit to HH:mm format (max 5 characters: HH:mm)
+      if (parts[0].length <= 2 && parts[1] && parts[1].length <= 2 && value.length <= 5) {
+        setCompletedDuration(value);
+        setCompletedError(false);
+      } else if (parts[0].length <= 2 && !parts[1] && value.length <= 3) {
+        setCompletedDuration(value);
+        setCompletedError(false);
+      }
+    }
+  };
+
   const getCurrentHoursMinutes = () => {
     const now = new Date();
     const hours = now.getHours().toString().padStart(2, "0");
@@ -326,6 +357,47 @@ function App() {
     localStorage.removeItem("customHours");
   };
 
+  const calculateRemainingFinishTime = () => {
+    if (!completedDuration) return;
+
+    const parts = completedDuration.split(":").map(Number);
+
+    if (parts.length < 2 || parts.length > 3 || parts.some(isNaN)) {
+      setCompletedError(true);
+      setRemainingFinishTime("");
+      return;
+    }
+
+    const [h, m, s = 0] = parts;
+
+    if (m > 59 || s > 59) {
+      setCompletedError(true);
+      setRemainingFinishTime("");
+      return;
+    }
+
+    const completedMinutes = h * 60 + m + s / 60;
+    const remainingMinutes = dayType - completedMinutes;
+
+    if (remainingMinutes <= 0) {
+      setRemainingFinishTime("Already completed 🎉");
+      setCompletedError(false);
+      return;
+    }
+
+    const now = new Date();
+    const finish = new Date(now.getTime() + remainingMinutes * 60000);
+
+    setRemainingFinishTime(
+      finish.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
+
+    setCompletedError(false);
+  };
+
   useEffect(() => {
     const storedTimes = localStorage.getItem("times");
     const storedDate = localStorage.getItem("currentDate");
@@ -375,7 +447,7 @@ function App() {
       clearTimeout(LoaderTimer);
     };
   }, []);
-  console.log(dayType);
+
   return (
     <div
       className="App"
@@ -551,55 +623,120 @@ function App() {
               );
             })}
           </div>
-          <div className="time-selection-container">
-            <div className="time-item">
-              <div className="time-label">Total Time</div>
-              <div className={`time-value ${timeIsCompleted ? "time-value-green" : ""}`}>
-                {totalTime
-                  ? `${Math.floor(totalTime / 60)
-                      ?.toString()
-                      .padStart(2, "0")}:${(totalTime % 60)?.toString().padStart(2, "0")}`
-                  : "00:00"}
+          <div className="time-summary-layout">
+            {/* LEFT GROUP */}
+            <div className="summary-panel">
+              <div className="panel-title">Work Time Summary</div>
+
+              <div className="summary-values" style={{ marginBottom: "20px" }}>
+                <div className="summary-item">
+                  <span>Total Time</span>
+                  <strong className={timeIsCompleted ? "done" : ""}>
+                    {totalTime
+                      ? `${String(Math.floor(totalTime / 60)).padStart(2, "0")}:${String(
+                          totalTime % 60
+                        ).padStart(2, "0")}`
+                      : "00:00"}
+                  </strong>
+                </div>
+
+                <div className="summary-item">
+                  <span>Finish At</span>
+                  <strong
+                    style={{
+                      textDecoration: getLastEntryType(times) === "out" ? "line-through" : "none",
+                    }}
+                  >
+                    {endTime !== "00:00"
+                      ? new Date(
+                          2024,
+                          1,
+                          1,
+                          Number(endTime.split(":")[0]),
+                          Number(endTime.split(":")[1])
+                        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : "--"}
+                  </strong>
+                </div>
               </div>
-            </div>
-            <div className="time-item">
-              <div className="time-label">Time Finish On</div>
-              <div
-                className="time-value"
-                style={{
-                  textDecoration: getLastEntryType(times) === "out" ? "line-through" : "none",
-                }}
-              >
-                {new Date(
-                  2024,
-                  1,
-                  1,
-                  Number(endTime?.split(":")?.[0]),
-                  Number(endTime?.split(":")?.[1])
-                ).toLocaleTimeString() === "Invalid Date"
-                  ? "00:00"
-                  : new Date(
-                      2024,
-                      1,
-                      1,
-                      Number(endTime?.split(":")?.[0]),
-                      Number(endTime?.split(":")?.[1])
-                    ).toLocaleTimeString()}
+
+              <div className="summary-actions">
+                <button
+                  onClick={() => calculateTotalTime(times, dayType)}
+                  style={{ background: "#2563eb", color: "#fff" }}
+                >
+                  Calculate
+                </button>
+                <button
+                  className="danger"
+                  onClick={() => {
+                    if (confirm("Would you like to clear it?")) clearLocalStorage();
+                  }}
+                >
+                  Clear
+                </button>
               </div>
             </div>
 
-            <div className="button-container">
-              <button className="calculate-btn" onClick={() => calculateTotalTime(times, dayType)}>
-                Calculate Total Time
-              </button>
-              <button
-                className="clear-btn"
-                onClick={() => {
-                  if (confirm("Would you like to clear it?")) clearLocalStorage();
-                }}
-              >
-                Clear Time
-              </button>
+            {/* RIGHT GROUP */}
+            <div className="completed-panel">
+              <div className="panel-title">Completed Working Hours</div>
+              <div className="summary-values" style={{ marginBottom: "10px" }}>
+                {/* Completed Duration Input */}
+                <div className="summary-item">
+                  <span>Completed Duration</span>
+                  <input
+                    type="text"
+                    placeholder="HH:mm"
+                    value={completedDuration}
+                    onChange={handleCompletedDurationChange}
+                    maxLength="5"
+                    style={{
+                      fontSize: "34px",
+                      textAlign: "center",
+                      fontWeight: "800",
+                      color: completedError ? "#ef4444" : "#2563eb",
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      padding: "0",
+                      lineHeight: "1.2",
+                    }}
+                  />
+                </div>
+                {/* Finish At display */}
+                <div className="summary-item">
+                  <span>Finish At</span>
+                  <strong style={{ color: "#2563eb", fontSize: "34px", fontWeight: 800 }}>
+                    {completedError || !remainingFinishTime ? "--" : remainingFinishTime}
+                  </strong>
+                </div>
+              </div>
+
+              {completedError && (
+                <div className="error-text" style={{ marginTop: "-20px", marginBottom: "10px" }}>
+                  Invalid format. Use HH:mm or HH:mm:ss
+                </div>
+              )}
+
+              <div className="summary-actions">
+                <button
+                  onClick={calculateRemainingFinishTime}
+                  style={{ background: "#2563eb", color: "#fff" }}
+                >
+                  Calculate
+                </button>
+                <button
+                  className="danger"
+                  onClick={() => {
+                    setCompletedDuration("");
+                    setRemainingFinishTime("");
+                    setCompletedError(false);
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
             </div>
           </div>
         </>
