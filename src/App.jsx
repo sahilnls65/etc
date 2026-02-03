@@ -576,6 +576,7 @@ function App() {
                       {transformTimeLabel(key)}
                     </h3>
                     <input
+                      tabIndex={i + 1}
                       type="time"
                       name={key}
                       value={value}
@@ -592,6 +593,7 @@ function App() {
                       }}
                     >
                       <button
+                        tabIndex="none"
                         title="Add current time"
                         className="add"
                         style={{
@@ -605,6 +607,7 @@ function App() {
                         <FaPlus color="#0085ca" style={{ marginRight: "5px" }} /> Add
                       </button>
                       <button
+                        tabIndex="none"
                         title="Remove current card time"
                         className="remove"
                         style={{
