@@ -380,7 +380,7 @@ function App() {
     const remainingMinutes = dayType - completedMinutes;
 
     if (remainingMinutes <= 0) {
-      setRemainingFinishTime("Already completed 🎉");
+      setRemainingFinishTime("Completed 🎉");
       setCompletedError(false);
       return;
     }
@@ -644,10 +644,15 @@ function App() {
                   <span>Finish At</span>
                   <strong
                     style={{
-                      textDecoration: getLastEntryType(times) === "out" ? "line-through" : "none",
+                      textDecoration:
+                        !timeIsCompleted && getLastEntryType(times) === "out"
+                          ? "line-through"
+                          : "none",
                     }}
                   >
-                    {endTime !== "00:00"
+                    {timeIsCompleted
+                      ? "Completed 🎉"
+                      : endTime !== "00:00"
                       ? new Date(
                           2024,
                           1,
@@ -695,7 +700,12 @@ function App() {
                       fontSize: "34px",
                       textAlign: "center",
                       fontWeight: "800",
-                      color: completedError ? "#ef4444" : "#2563eb",
+                      color:
+                        remainingFinishTime === "Completed 🎉"
+                          ? "#16a34a"
+                          : completedError
+                          ? "#ef4444"
+                          : "#2563eb",
                       border: "none",
                       outline: "none",
                       background: "transparent",
@@ -715,7 +725,7 @@ function App() {
 
               {completedError && (
                 <div className="error-text" style={{ marginTop: "-20px", marginBottom: "10px" }}>
-                  Invalid format. Use HH:mm or HH:mm:ss
+                  Invalid format. Use HH:mm
                 </div>
               )}
 
