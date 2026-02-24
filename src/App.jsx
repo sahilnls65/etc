@@ -120,7 +120,6 @@ function App() {
   const handleDayChange = (event) => {
     setDayType(event.target.value);
     localStorage.setItem("dayType", event.target.value);
-    calculateTotalTime(times, event.target.value);
   };
 
   const handleInputChange = (e) => {
@@ -203,7 +202,6 @@ function App() {
   };
 
   const calculateTotalTime = (times, dayType) => {
-    console.log(dayType, "test++++");
     let totalMinutes = 0;
     let totalPunchMinutes = 0;
     const newMissingFields = {};
@@ -527,9 +525,9 @@ function App() {
                 placeholder="Select an option"
                 style={{ width: "200px !important" }}
               >
-                {dayOptions?.map((op) => {
+                {dayOptions?.map((op, i) => {
                   return (
-                    <option key={`${op.key}_${op.value}`} value={op.value}>
+                    <option key={i} value={op.value}>
                       {op.key}
                     </option>
                   );
