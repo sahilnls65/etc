@@ -8,7 +8,7 @@ import TimeInput from "./TimeInput";
 import "./styles.css";
 
 const DEFAULT_PAIRS = 6;
-const DEFAULT_DAY_TYPE = 510; // 8:30 hours
+const DEFAULT_DAY_TYPE = 510;
 
 const createInitialTimes = (pairs = DEFAULT_PAIRS) => {
   const data = {};
@@ -28,7 +28,7 @@ const dayOption = [
   { key: "Early Leave (06:00)", value: 360 },
 ];
 
-// --- Utility Functions ---
+// --- Utilities ---
 
 const formatMinutesToHHMM = (totalMinutes) => {
   if (!totalMinutes || totalMinutes <= 0) return "00:00";
@@ -37,22 +37,17 @@ const formatMinutesToHHMM = (totalMinutes) => {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 };
 
-/** Format hours:minutes into display string based on 12h/24h preference */
 const formatTimeDisplay = (hours, minutes, is24h) => {
-  const h = ((hours % 24) + 24) % 24; // normalize
+  const h = ((hours % 24) + 24) % 24;
   const m = Math.round(minutes);
-  if (is24h) {
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  }
+  if (is24h) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   const period = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 };
 
-/** Format a Date object into display string */
-const formatDateTimeDisplay = (date, is24h) => {
-  return formatTimeDisplay(date.getHours(), date.getMinutes(), is24h);
-};
+const formatDateTimeDisplay = (date, is24h) =>
+  formatTimeDisplay(date.getHours(), date.getMinutes(), is24h);
 
 const getCurrentHHMM = () => {
   const now = new Date();
@@ -60,15 +55,6 @@ const getCurrentHHMM = () => {
 };
 
 const getTodayKey = () => new Date().toISOString().split("T")[0];
-
-const getLocaleDateString = () => {
-  return new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-};
 
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr || !timeStr.includes(":")) return null;
@@ -89,7 +75,6 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
   for (let i = 1; i <= pairCount; i++) {
     const inTime = times[`in${i}`];
     const outTime = times[`out${i}`];
-
     if (inTime && outTime) {
       const inMin = parseTimeToMinutes(inTime);
       const outMin = parseTimeToMinutes(outTime);
@@ -103,7 +88,6 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
     }
   }
 
-  // Determine last entry type
   const entries = Object.entries(times);
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i][1]) {
@@ -112,7 +96,6 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
     }
   }
 
-  // Find the last "in" time for live tracking
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i][0].startsWith("in") && entries[i][1]) {
       lastInTime = entries[i][1];
@@ -120,7 +103,6 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
     }
   }
 
-  // Add live duration if last punch is "in"
   let liveTotalMinutes = totalPunchMinutes;
   if (lastEntryType === "in" && lastInTime) {
     const lastInMin = parseTimeToMinutes(lastInTime);
@@ -128,13 +110,10 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
       const now = new Date();
       const nowMin = now.getHours() * 60 + now.getMinutes();
       const elapsed = nowMin - lastInMin;
-      if (elapsed > 0) {
-        liveTotalMinutes += elapsed;
-      }
+      if (elapsed > 0) liveTotalMinutes += elapsed;
     }
   }
 
-  // Calculate finish time
   let finishTime = null;
   const remaining = dayTypeMinutes - liveTotalMinutes;
 
@@ -155,19 +134,46 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
   const isCompleted = liveTotalMinutes >= dayTypeMinutes;
   const progressPercent = Math.min(100, (liveTotalMinutes / dayTypeMinutes) * 100);
 
-  return {
-    totalPunchMinutes,
-    liveTotalMinutes,
-    missingFields,
-    lastEntryType,
-    finishTime,
-    isCompleted,
-    progressPercent,
-    remaining,
-  };
+  return { totalPunchMinutes, liveTotalMinutes, missingFields, lastEntryType, finishTime, isCompleted, progressPercent, remaining };
 };
 
-// --- Component ---
+// --- Circular Progress ---
+function CircularProgress({ percent, isCompleted, isActive }) {
+  const r = 54;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (percent / 100) * circ;
+  return (
+    <svg className="circle-progress" viewBox="0 0 120 120">
+      <circle className="circle-bg" cx="60" cy="60" r={r} />
+      <circle
+        className={`circle-fill ${isCompleted ? "circle-done" : ""} ${isActive ? "circle-active" : ""}`}
+        cx="60" cy="60" r={r}
+        strokeDasharray={circ}
+        strokeDashoffset={offset}
+      />
+    </svg>
+  );
+}
+
+// --- Status Badge ---
+function StatusBadge({ lastEntryType, isCompleted }) {
+  if (isCompleted) return <span className="status-badge status-done">Completed</span>;
+  if (lastEntryType === "in") return <span className="status-badge status-active">Working</span>;
+  if (lastEntryType === "out") return <span className="status-badge status-paused">Paused</span>;
+  return <span className="status-badge status-idle">Idle</span>;
+}
+
+// --- Live Clock ---
+function LiveClock({ is24h }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="live-clock">{formatDateTimeDisplay(now, is24h)}</span>;
+}
+
+// --- App ---
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -177,68 +183,39 @@ function App() {
   const [is24h, setIs24h] = useState(() => {
     const stored = localStorage.getItem("etc_timeFormat");
     if (stored !== null) return stored === "24";
-    // Default: detect from browser locale
     const test = new Date(2000, 0, 1, 14, 0).toLocaleTimeString([], { hour: "numeric" });
     return !test.includes("AM") && !test.includes("PM");
   });
-  const [customWorkingHours, setCustomWorkingHours] = useState({
-    time: "",
-    visible: false,
-    error: false,
-  });
-
+  const [customWorkingHours, setCustomWorkingHours] = useState({ time: "", visible: false, error: false });
   const [completedDuration, setCompletedDuration] = useState("");
   const [remainingFinishTime, setRemainingFinishTime] = useState("");
   const [completedError, setCompletedError] = useState(false);
-
-  // --- Computed values (recalculated on state change) ---
   const [tick, setTick] = useState(0);
-  const computed = useMemo(
-    () => computeTimeData(times, dayType, is24h),
-    [times, dayType, is24h, tick]
-  );
 
-  // --- Local Storage Helpers ---
+  const computed = useMemo(() => computeTimeData(times, dayType, is24h), [times, dayType, is24h, tick]);
 
-  const saveTimesToStorage = useCallback((t) => {
-    localStorage.setItem("etc_times", JSON.stringify(t));
-  }, []);
+  const saveTimesToStorage = useCallback((t) => { localStorage.setItem("etc_times", JSON.stringify(t)); }, []);
 
   const clearAllData = useCallback(() => {
-    const fresh = createInitialTimes();
-    setTimes(fresh);
+    setTimes(createInitialTimes());
     localStorage.removeItem("etc_times");
     setCompletedDuration("");
     setRemainingFinishTime("");
     setCompletedError(false);
   }, []);
 
-  // --- Handlers ---
-
   const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
-    setTimes((prev) => {
-      const updated = { ...prev, [name]: value };
-      saveTimesToStorage(updated);
-      return updated;
-    });
+    setTimes((prev) => { const u = { ...prev, [name]: value }; saveTimesToStorage(u); return u; });
   }, [saveTimesToStorage]);
 
   const addCurrentTime = useCallback((name) => {
-    const currentTime = getCurrentHHMM();
-    setTimes((prev) => {
-      const updated = { ...prev, [name]: currentTime };
-      saveTimesToStorage(updated);
-      return updated;
-    });
+    const t = getCurrentHHMM();
+    setTimes((prev) => { const u = { ...prev, [name]: t }; saveTimesToStorage(u); return u; });
   }, [saveTimesToStorage]);
 
   const handleClear = useCallback((name) => {
-    setTimes((prev) => {
-      const updated = { ...prev, [name]: "" };
-      saveTimesToStorage(updated);
-      return updated;
-    });
+    setTimes((prev) => { const u = { ...prev, [name]: "" }; saveTimesToStorage(u); return u; });
   }, [saveTimesToStorage]);
 
   const handleDayChange = useCallback((e) => {
@@ -248,75 +225,53 @@ function App() {
   }, []);
 
   const toggleTimeFormat = useCallback(() => {
-    setIs24h((prev) => {
-      const next = !prev;
-      localStorage.setItem("etc_timeFormat", next ? "24" : "12");
-      return next;
-    });
+    setIs24h((prev) => { const n = !prev; localStorage.setItem("etc_timeFormat", n ? "24" : "12"); return n; });
   }, []);
 
   const addMoreCard = useCallback(() => {
     setTimes((prev) => {
-      const pairCount = Object.keys(prev).length / 2;
-      const updated = {
-        ...prev,
-        [`in${pairCount + 1}`]: "",
-        [`out${pairCount + 1}`]: "",
-      };
-      saveTimesToStorage(updated);
-      return updated;
+      const pc = Object.keys(prev).length / 2;
+      const u = { ...prev, [`in${pc + 1}`]: "", [`out${pc + 1}`]: "" };
+      saveTimesToStorage(u);
+      return u;
     });
   }, [saveTimesToStorage]);
 
-  const removeCard = useCallback((pairNumber) => {
-    setTimes((prev) => {
-      const updated = { ...prev };
-      delete updated[`in${pairNumber}`];
-      delete updated[`out${pairNumber}`];
-      saveTimesToStorage(updated);
-      return updated;
-    });
+  const removeCard = useCallback((pn) => {
+    setTimes((prev) => { const u = { ...prev }; delete u[`in${pn}`]; delete u[`out${pn}`]; saveTimesToStorage(u); return u; });
   }, [saveTimesToStorage]);
 
   const isFieldEnabled = useCallback((name) => {
-    const fieldOrder = Object.keys(times);
-    const index = fieldOrder.indexOf(name);
-    if (index === 0) return true;
-    const previousField = fieldOrder[index - 1];
-    return !!times[previousField];
+    const fo = Object.keys(times);
+    const idx = fo.indexOf(name);
+    if (idx === 0) return true;
+    return !!times[fo[idx - 1]];
   }, [times]);
 
-  // --- Custom Working Hours ---
-
+  // Custom hours
   const handleCustomWorkingHours = useCallback((e) => {
     const input = e.target.value;
     if (/^[0-9:]*$/.test(input)) {
       if (input.length === 2 && !input.includes(":")) {
-        setCustomWorkingHours((prev) => ({ ...prev, time: input + ":", error: false }));
+        setCustomWorkingHours((p) => ({ ...p, time: input + ":", error: false }));
       } else if (input.length <= 5) {
-        setCustomWorkingHours((prev) => ({ ...prev, time: input, error: false }));
+        setCustomWorkingHours((p) => ({ ...p, time: input, error: false }));
       }
     }
   }, []);
 
   const handleAddCustomTime = useCallback((cwh) => {
-    const parts = cwh.time.split(":");
-    const [hours, minutes] = parts;
-    if (
-      hours?.length === 2 &&
-      minutes?.length === 2 &&
-      +hours >= 0 && +hours <= 23 &&
-      +minutes >= 0 && +minutes <= 59
-    ) {
+    const [hours, minutes] = cwh.time.split(":");
+    if (hours?.length === 2 && minutes?.length === 2 && +hours >= 0 && +hours <= 23 && +minutes >= 0 && +minutes <= 59) {
       const totalMin = +hours * 60 + +minutes;
-      const formatted = `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
-      setCustomWorkingHours({ visible: true, time: formatted, error: false });
-      setDayOptions([...dayOption, { key: `Custom (${formatted})`, value: totalMin }]);
+      const fmt = `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+      setCustomWorkingHours({ visible: true, time: fmt, error: false });
+      setDayOptions([...dayOption, { key: `Custom (${fmt})`, value: totalMin }]);
       setDayType(totalMin);
-      localStorage.setItem("etc_customHours", formatted);
+      localStorage.setItem("etc_customHours", fmt);
       localStorage.setItem("etc_dayType", totalMin);
     } else {
-      setCustomWorkingHours((prev) => ({ ...prev, error: true }));
+      setCustomWorkingHours((p) => ({ ...p, error: true }));
     }
   }, []);
 
@@ -328,76 +283,47 @@ function App() {
     localStorage.setItem("etc_dayType", DEFAULT_DAY_TYPE);
   }, []);
 
-  // --- Completed Duration ---
-
+  // Completed duration
   const handleCompletedDurationChange = useCallback((e) => {
-    let value = e.target.value.replace(/[^\d:]/g, "");
-    if (value.length === 3 && !value.includes(":")) {
-      value = value.slice(0, 2) + ":" + value.slice(2);
-    }
-    if (value.length <= 5) {
-      setCompletedDuration(value);
-      setCompletedError(false);
-    }
+    let v = e.target.value.replace(/[^\d:]/g, "");
+    if (v.length === 3 && !v.includes(":")) v = v.slice(0, 2) + ":" + v.slice(2);
+    if (v.length <= 5) { setCompletedDuration(v); setCompletedError(false); }
   }, []);
 
   const calculateRemainingFinishTime = useCallback(() => {
-    if (!completedDuration) {
-      setRemainingFinishTime("");
-      return;
-    }
+    if (!completedDuration) { setRemainingFinishTime(""); return; }
     const parts = completedDuration.split(":").map(Number);
-    if (parts.length < 2 || parts.some(isNaN) || parts[1] > 59) {
-      setCompletedError(true);
-      setRemainingFinishTime("");
-      return;
-    }
-    const [h, m] = parts;
-    const completedMin = h * 60 + m;
-    const remainingMin = dayType - completedMin;
-
-    if (remainingMin <= 0) {
-      setRemainingFinishTime("Completed");
-      setCompletedError(false);
-      return;
-    }
-
-    const now = new Date();
-    const finish = new Date(now.getTime() + remainingMin * 60000);
+    if (parts.length < 2 || parts.some(isNaN) || parts[1] > 59) { setCompletedError(true); setRemainingFinishTime(""); return; }
+    const completedMin = parts[0] * 60 + parts[1];
+    const rem = dayType - completedMin;
+    if (rem <= 0) { setRemainingFinishTime("Completed"); setCompletedError(false); return; }
+    const finish = new Date(Date.now() + rem * 60000);
     setRemainingFinishTime(formatDateTimeDisplay(finish, is24h));
     setCompletedError(false);
   }, [completedDuration, dayType, is24h]);
 
-  // --- Initialization & Intervals ---
-
+  // Init
   useEffect(() => {
     const todayKey = getTodayKey();
     const storedDate = localStorage.getItem("etc_date");
-
     if (storedDate === todayKey) {
-      const storedTimes = localStorage.getItem("etc_times");
-      if (storedTimes) {
-        try { setTimes(JSON.parse(storedTimes)); } catch { /* ignore */ }
-      }
-      const storedDayType = localStorage.getItem("etc_dayType");
-      if (storedDayType) setDayType(Number(storedDayType));
-
-      const customHours = localStorage.getItem("etc_customHours");
-      if (customHours) {
-        const [h, m] = customHours.split(":").map(Number);
-        const totalMin = h * 60 + m;
-        setCustomWorkingHours({ visible: true, time: customHours, error: false });
-        setDayOptions([...dayOption, { key: `Custom (${customHours})`, value: totalMin }]);
-        setDayType(totalMin);
+      const st = localStorage.getItem("etc_times");
+      if (st) { try { setTimes(JSON.parse(st)); } catch { /* ignore */ } }
+      const sd = localStorage.getItem("etc_dayType");
+      if (sd) setDayType(Number(sd));
+      const ch = localStorage.getItem("etc_customHours");
+      if (ch) {
+        const [h, m] = ch.split(":").map(Number);
+        setCustomWorkingHours({ visible: true, time: ch, error: false });
+        setDayOptions([...dayOption, { key: `Custom (${ch})`, value: h * 60 + m }]);
+        setDayType(h * 60 + m);
       }
     } else {
       localStorage.removeItem("etc_times");
       localStorage.setItem("etc_date", todayKey);
     }
-
-    const loaderTimer = setTimeout(() => setLoading(false), 600);
-
-    const tickInterval = setInterval(() => {
+    const lt = setTimeout(() => setLoading(false), 600);
+    const ti = setInterval(() => {
       setTick((t) => t + 1);
       if (getTodayKey() !== localStorage.getItem("etc_date")) {
         localStorage.removeItem("etc_times");
@@ -405,321 +331,201 @@ function App() {
         setTimes(createInitialTimes());
       }
     }, 30000);
-
-    return () => {
-      clearTimeout(loaderTimer);
-      clearInterval(tickInterval);
-    };
+    return () => { clearTimeout(lt); clearInterval(ti); };
   }, []);
 
-  // --- Derive pair data for rendering ---
   const pairKeys = useMemo(() => {
     const keys = Object.keys(times);
     const pairs = [];
     for (let i = 0; i < keys.length; i += 2) {
-      const inKey = keys[i];
-      const outKey = keys[i + 1];
-      if (inKey && outKey) {
-        const num = inKey.replace("in", "");
-        pairs.push({ inKey, outKey, num: Number(num) });
-      }
+      const ik = keys[i], ok = keys[i + 1];
+      if (ik && ok) pairs.push({ inKey: ik, outKey: ok, num: Number(ik.replace("in", "")) });
     }
     return pairs;
   }, [times]);
 
   const totalPairs = pairKeys.length;
-
-  // Disable "Add Pair" until the last pair is fully filled
   const canAddPair = useMemo(() => {
-    if (pairKeys.length === 0) return true;
-    const last = pairKeys[pairKeys.length - 1];
-    return !!(times[last.inKey] && times[last.outKey]);
+    if (!pairKeys.length) return true;
+    const l = pairKeys[pairKeys.length - 1];
+    return !!(times[l.inKey] && times[l.outKey]);
   }, [pairKeys, times]);
 
   if (loading) return <Loader />;
 
+  const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
   return (
     <div className="app">
-      {/* Header */}
-      <header className="app-header">
-        <div className="header-left">
-          <h1 className="app-title">Time Calculator</h1>
-          <span className="app-date">{getLocaleDateString()}</span>
+      {/* ====== HERO DASHBOARD ====== */}
+      <section className="hero">
+        <div className="hero-top">
+          <div className="hero-title-area">
+            <h1 className="hero-title">Time Calculator</h1>
+            <p className="hero-date">{dateStr}</p>
+          </div>
+          <div className="hero-clock-area">
+            <LiveClock is24h={is24h} />
+            <StatusBadge lastEntryType={computed.lastEntryType} isCompleted={computed.isCompleted} />
+          </div>
         </div>
-        <div className="header-controls">
-          {/* 12h / 24h Toggle */}
-          <button
-            className={`time-format-toggle`}
-            onClick={toggleTimeFormat}
-            title={`Switch to ${is24h ? "12-hour" : "24-hour"} format`}
-          >
-            <span className={`toggle-option ${!is24h ? "toggle-active" : ""}`}>12h</span>
-            <span className={`toggle-option ${is24h ? "toggle-active" : ""}`}>24h</span>
-          </button>
 
-          {customWorkingHours.visible ? (
-            <div className="custom-hours-input">
-              <input
-                type="text"
-                placeholder="HH:mm"
-                value={customWorkingHours.time}
-                onChange={handleCustomWorkingHours}
-                className={`custom-input ${customWorkingHours.error ? "input-error" : ""}`}
-                maxLength={5}
-              />
-              <button
-                className="btn btn-icon btn-primary-light"
-                onClick={() => handleAddCustomTime(customWorkingHours)}
-                title="Apply custom hours"
-              >
-                <FaPlus size={12} />
-              </button>
-              <button
-                className="btn btn-icon btn-danger-light"
-                onClick={handleRemoveCustomTime}
-                title="Remove custom hours"
-              >
-                <IoCloseCircle size={16} />
-              </button>
-              {customWorkingHours.error && (
-                <span className="inline-error">Invalid (HH:mm)</span>
-              )}
+        <div className="hero-body">
+          {/* Circular Progress */}
+          <div className="hero-progress">
+            <CircularProgress
+              percent={computed.progressPercent}
+              isCompleted={computed.isCompleted}
+              isActive={computed.lastEntryType === "in"}
+            />
+            <div className="hero-progress-text">
+              <span className="hero-percent">{Math.round(computed.progressPercent)}%</span>
+              <span className="hero-sub">{formatMinutesToHHMM(computed.liveTotalMinutes)} / {formatMinutesToHHMM(dayType)}</span>
             </div>
-          ) : (
-            <button
-              className="btn btn-outline"
-              onClick={() => setCustomWorkingHours({ visible: true, time: "", error: false })}
-            >
-              <FaPlus size={10} style={{ marginRight: 6 }} />
-              Custom Hours
-            </button>
-          )}
+          </div>
 
-          <select value={dayType} onChange={handleDayChange} className="day-select">
-            {dayOptions.map((op, i) => (
-              <option key={i} value={op.value}>{op.key}</option>
-            ))}
-          </select>
-
-          <button className="btn btn-outline" onClick={addMoreCard} disabled={!canAddPair}>
-            <FaPlus size={10} style={{ marginRight: 6 }} />
-            Add Pair
-          </button>
-        </div>
-      </header>
-
-      {/* Progress Bar */}
-      <div className="progress-container">
-        <div className="progress-bar">
-          <div
-            className={`progress-fill ${computed.isCompleted ? "progress-completed" : ""}`}
-            style={{ width: `${computed.progressPercent}%` }}
-          />
-        </div>
-        <div className="progress-label">
-          <span>{formatMinutesToHHMM(computed.liveTotalMinutes)} / {formatMinutesToHHMM(dayType)}</span>
-          <span>{Math.round(computed.progressPercent)}%</span>
-        </div>
-      </div>
-
-      {/* Time Cards Grid */}
-      <div className="cards-grid">
-        {pairKeys.map(({ inKey, outKey, num }, pairIndex) => {
-          const inEnabled = isFieldEnabled(inKey);
-          const outEnabled = isFieldEnabled(outKey);
-          const inValue = times[inKey];
-          const outValue = times[outKey];
-          const inMissing = computed.missingFields[inKey];
-          const outMissing = computed.missingFields[outKey];
-          const canRemove = pairIndex >= DEFAULT_PAIRS && pairIndex === totalPairs - 1;
-
-          // Calculate pair duration
-          let pairDuration = null;
-          if (inValue && outValue) {
-            const inMin = parseTimeToMinutes(inValue);
-            const outMin = parseTimeToMinutes(outValue);
-            if (inMin !== null && outMin !== null && outMin > inMin) {
-              pairDuration = formatMinutesToHHMM(outMin - inMin);
-            }
-          }
-
-          return (
-            <div className={`pair-card ${!inEnabled && !inValue ? "pair-disabled" : ""}`} key={num}>
-              <div className="pair-header">
-                <span className="pair-number">Pair {num}</span>
-                {pairDuration && <span className="pair-duration">{pairDuration}</span>}
-                {canRemove && (
-                  <button
-                    className="btn-remove-card"
-                    onClick={() => removeCard(num)}
-                    title="Remove pair"
-                  >
-                    <RxCross2 size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div className="pair-fields">
-                {/* In Field */}
-                <div className={`field-group ${inMissing ? "field-missing" : ""}`}>
-                  <label className="field-label in-label">In</label>
-                  <TimeInput
-                    name={inKey}
-                    value={inValue}
-                    onChange={handleInputChange}
-                    is24h={is24h}
-                    disabled={!inEnabled}
-                    tabIndex={pairIndex * 2 + 1}
-                  />
-                  <div className="field-actions">
-                    <button
-                      className="btn-sm btn-add"
-                      onClick={() => addCurrentTime(inKey)}
-                      disabled={!inEnabled}
-                      title="Set current time"
-                    >
-                      Now
-                    </button>
-                    <button
-                      className="btn-sm btn-clear"
-                      onClick={() => handleClear(inKey)}
-                      disabled={!inEnabled}
-                      title="Clear"
-                    >
-                      <FaTrashAlt size={10} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Out Field */}
-                <div className={`field-group ${outMissing ? "field-missing" : ""}`}>
-                  <label className="field-label out-label">Out</label>
-                  <TimeInput
-                    name={outKey}
-                    value={outValue}
-                    onChange={handleInputChange}
-                    is24h={is24h}
-                    disabled={!outEnabled}
-                    tabIndex={pairIndex * 2 + 2}
-                  />
-                  <div className="field-actions">
-                    <button
-                      className="btn-sm btn-add"
-                      onClick={() => addCurrentTime(outKey)}
-                      disabled={!outEnabled}
-                      title="Set current time"
-                    >
-                      Now
-                    </button>
-                    <button
-                      className="btn-sm btn-clear"
-                      onClick={() => handleClear(outKey)}
-                      disabled={!outEnabled}
-                      title="Clear"
-                    >
-                      <FaTrashAlt size={10} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Summary Section */}
-      <div className="summary-layout">
-        {/* Punch Summary */}
-        <div className="summary-card">
-          <div className="summary-card-title">Punch Summary</div>
-          <div className="summary-row">
-            <div className="summary-metric">
-              <span className="metric-label">Total Worked</span>
-              <span className={`metric-value ${computed.isCompleted ? "value-completed" : ""}`}>
+          {/* Key Metrics */}
+          <div className="hero-metrics">
+            <div className="hero-metric">
+              <span className="hm-label">Total Worked</span>
+              <span className={`hm-value ${computed.isCompleted ? "hm-done" : ""}`}>
                 {formatMinutesToHHMM(computed.liveTotalMinutes)}
               </span>
             </div>
-            <div className="summary-metric">
-              <span className="metric-label">Finish At</span>
-              <span
-                className={`metric-value ${computed.isCompleted ? "value-completed" : ""} ${
-                  !computed.isCompleted && computed.lastEntryType === "out" ? "value-paused" : ""
-                }`}
-              >
-                {computed.isCompleted
-                  ? "Done!"
-                  : computed.finishTime || "--"}
+            <div className="hero-metric">
+              <span className="hm-label">Remaining</span>
+              <span className={`hm-value ${computed.isCompleted ? "hm-done" : ""}`}>
+                {computed.remaining <= 0 ? "00:00" : formatMinutesToHHMM(computed.remaining)}
+              </span>
+            </div>
+            <div className="hero-metric hero-metric-accent">
+              <span className="hm-label">Finish At</span>
+              <span className={`hm-value hm-finish ${computed.isCompleted ? "hm-done" : ""}`}>
+                {computed.isCompleted ? "Done!" : computed.finishTime || "--:--"}
               </span>
               {!computed.isCompleted && computed.lastEntryType === "out" && computed.finishTime && (
-                <span className="metric-hint">Paused — punch in to resume</span>
+                <span className="hm-hint">Paused</span>
               )}
             </div>
           </div>
-          <div className="summary-card-actions">
-            <button
-              className="btn btn-primary"
-              onClick={() => setTick((t) => t + 1)}
-            >
-              Recalculate
-            </button>
-            <button
-              className="btn btn-danger"
-              onClick={() => {
-                if (confirm("Clear all punch data?")) clearAllData();
-              }}
-            >
-              Clear All
-            </button>
-          </div>
         </div>
 
-        {/* Completed Hours */}
-        <div className="summary-card">
-          <div className="summary-card-title">
-            Manual Entry
-            <span className="title-hint">Enter completed hours from your system</span>
+        {/* Controls strip */}
+        <div className="hero-controls">
+          <button className="fmt-toggle" onClick={toggleTimeFormat} title={`Switch to ${is24h ? "12h" : "24h"}`}>
+            <span className={`fmt-opt ${!is24h ? "fmt-on" : ""}`}>12h</span>
+            <span className={`fmt-opt ${is24h ? "fmt-on" : ""}`}>24h</span>
+          </button>
+
+          <select value={dayType} onChange={handleDayChange} className="day-select">
+            {dayOptions.map((op, i) => <option key={i} value={op.value}>{op.key}</option>)}
+          </select>
+
+          {customWorkingHours.visible ? (
+            <div className="custom-hours-row">
+              <input type="text" placeholder="HH:mm" value={customWorkingHours.time} onChange={handleCustomWorkingHours}
+                className={`custom-input ${customWorkingHours.error ? "input-error" : ""}`} maxLength={5} />
+              <button className="ctrl-btn ctrl-add" onClick={() => handleAddCustomTime(customWorkingHours)}><FaPlus size={10} /></button>
+              <button className="ctrl-btn ctrl-remove" onClick={handleRemoveCustomTime}><IoCloseCircle size={14} /></button>
+            </div>
+          ) : (
+            <button className="ctrl-btn-text" onClick={() => setCustomWorkingHours({ visible: true, time: "", error: false })}>
+              + Custom
+            </button>
+          )}
+
+          <div className="hero-controls-right">
+            <button className="ctrl-btn-text" onClick={addMoreCard} disabled={!canAddPair}>+ Add Pair</button>
+            <button className="ctrl-btn-text ctrl-refresh" onClick={() => setTick((t) => t + 1)}>Refresh</button>
+            <button className="ctrl-btn-text ctrl-danger" onClick={() => { if (confirm("Clear all punch data?")) clearAllData(); }}>Clear All</button>
           </div>
-          <div className="summary-row">
-            <div className="summary-metric">
-              <span className="metric-label">Completed Duration</span>
+        </div>
+      </section>
+
+      {/* ====== PUNCH CARDS ====== */}
+      <section className="section">
+        <h2 className="section-title">Punch Entries</h2>
+        <div className="cards-grid">
+          {pairKeys.map(({ inKey, outKey, num }, pi) => {
+            const inE = isFieldEnabled(inKey), outE = isFieldEnabled(outKey);
+            const inV = times[inKey], outV = times[outKey];
+            const inM = computed.missingFields[inKey], outM = computed.missingFields[outKey];
+            const canRm = pi >= DEFAULT_PAIRS && pi === totalPairs - 1;
+            const isLive = inV && !outV && computed.lastEntryType === "in";
+
+            let dur = null;
+            if (inV && outV) {
+              const a = parseTimeToMinutes(inV), b = parseTimeToMinutes(outV);
+              if (a !== null && b !== null && b > a) dur = formatMinutesToHHMM(b - a);
+            }
+
+            return (
+              <div className={`pair-card ${!inE && !inV ? "pair-disabled" : ""} ${isLive ? "pair-live" : ""}`} key={num}>
+                <div className="pair-top">
+                  <span className="pair-num">#{num}</span>
+                  {dur && <span className="pair-dur">{dur}</span>}
+                  {isLive && <span className="pair-live-dot" />}
+                  {canRm && (
+                    <button className="pair-rm" onClick={() => removeCard(num)} title="Remove"><RxCross2 size={12} /></button>
+                  )}
+                </div>
+
+                <div className="pair-fields">
+                  <div className={`pf ${inM ? "pf-miss" : ""}`}>
+                    <span className="pf-label pf-in">IN</span>
+                    <TimeInput name={inKey} value={inV} onChange={handleInputChange} is24h={is24h} disabled={!inE} tabIndex={pi * 2 + 1} />
+                    <div className="pf-btns">
+                      <button className="pf-btn pf-now" onClick={() => addCurrentTime(inKey)} disabled={!inE}>Now</button>
+                      <button className="pf-btn pf-clr" onClick={() => handleClear(inKey)} disabled={!inE}><FaTrashAlt size={9} /></button>
+                    </div>
+                  </div>
+                  <div className="pair-arrow">&#8594;</div>
+                  <div className={`pf ${outM ? "pf-miss" : ""}`}>
+                    <span className="pf-label pf-out">OUT</span>
+                    <TimeInput name={outKey} value={outV} onChange={handleInputChange} is24h={is24h} disabled={!outE} tabIndex={pi * 2 + 2} />
+                    <div className="pf-btns">
+                      <button className="pf-btn pf-now" onClick={() => addCurrentTime(outKey)} disabled={!outE}>Now</button>
+                      <button className="pf-btn pf-clr" onClick={() => handleClear(outKey)} disabled={!outE}><FaTrashAlt size={9} /></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ====== MANUAL ENTRY ====== */}
+      <section className="section">
+        <h2 className="section-title">Manual Entry</h2>
+        <div className="manual-card">
+          <p className="manual-hint">Enter your completed hours from the system to calculate remaining time.</p>
+          <div className="manual-row">
+            <div className="manual-field">
+              <label className="manual-label">Completed</label>
               <input
                 type="text"
-                className={`completed-input ${completedError ? "input-error" : ""} ${
-                  remainingFinishTime === "Completed" ? "input-completed" : ""
-                }`}
+                className={`manual-input ${completedError ? "input-error" : ""} ${remainingFinishTime === "Completed" ? "manual-done" : ""}`}
                 placeholder="HH:mm"
                 value={completedDuration}
                 onChange={handleCompletedDurationChange}
                 maxLength={5}
               />
             </div>
-            <div className="summary-metric">
-              <span className="metric-label">Finish At</span>
-              <span className={`metric-value ${remainingFinishTime === "Completed" ? "value-completed" : ""}`}>
-                {completedError || !remainingFinishTime ? "--" : remainingFinishTime}
+            <div className="manual-result">
+              <label className="manual-label">Finish At</label>
+              <span className={`manual-value ${remainingFinishTime === "Completed" ? "hm-done" : ""}`}>
+                {completedError || !remainingFinishTime ? "--:--" : remainingFinishTime}
               </span>
             </div>
+            <div className="manual-actions">
+              <button className="btn-pill btn-pill-primary" onClick={calculateRemainingFinishTime}>Calculate</button>
+              <button className="btn-pill btn-pill-ghost" onClick={() => { setCompletedDuration(""); setRemainingFinishTime(""); setCompletedError(false); }}>Clear</button>
+            </div>
           </div>
-          {completedError && (
-            <p className="error-msg">Invalid format — use HH:mm</p>
-          )}
-          <div className="summary-card-actions">
-            <button className="btn btn-primary" onClick={calculateRemainingFinishTime}>
-              Calculate
-            </button>
-            <button
-              className="btn btn-danger"
-              onClick={() => {
-                setCompletedDuration("");
-                setRemainingFinishTime("");
-                setCompletedError(false);
-              }}
-            >
-              Clear
-            </button>
-          </div>
+          {completedError && <p className="error-msg">Invalid format — use HH:mm</p>}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
