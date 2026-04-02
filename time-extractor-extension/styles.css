@@ -1,0 +1,234 @@
+* {
+  box-sizing: border-box;
+  font-family: "Poppins", sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 360px;
+  min-height: 400px;
+  background-color: #f0f0f038;
+}
+
+.popup-root {
+  padding: 14px 14px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.header-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.time-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 6px;
+  background-color: #e5edff;
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.mode-btn {
+  flex: 1;
+  border-radius: 999px;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 0;
+  cursor: pointer;
+  background: transparent;
+  color: #475569;
+  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.mode-btn.active {
+  background-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.4);
+}
+
+.time-select {
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  padding: 0 10px;
+  font-size: 14px;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06);
+}
+
+.time-select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
+}
+
+.timesheet-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.card {
+  background-color: #ffffff;
+  border-radius: 10px;
+  padding: 10px 10px 12px 10px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.card input[type="time"] {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #d5d5f6;
+  font-size: 13px;
+  background-color: #f8fafc;
+}
+
+.card input[type="time"]:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+
+.time-summary-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.popup-summary .summary-panel,
+.popup-summary .completed-panel {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 12px 14px 14px 14px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 10px;
+}
+
+.summary-values {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+}
+
+.summary-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-item span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.summary-item strong {
+  font-size: 22px;
+  font-weight: 800;
+  color: #2563eb;
+}
+
+.summary-item input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #d4d4f5;
+  padding: 8px 10px;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  color: #2563eb;
+  background-color: #f8fafc;
+}
+
+.summary-item input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+
+.summary-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+.summary-actions button {
+  flex: 1;
+  border-radius: 999px;
+  padding: 9px 0;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+#calculateBtn {
+  background-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.35);
+}
+
+#calculateBtn:hover {
+  background-color: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 340px) {
+  body {
+    width: 320px;
+  }
+
+  .timesheet-container {
+    grid-template-columns: 1fr;
+  }
+}

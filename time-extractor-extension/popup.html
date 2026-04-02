@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Work Hours Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="App popup-root">
+      <div class="header-container">
+        <div class="header-top">
+          <img
+            src="https://ess1.emgage.work/assets/emgage_logo-yAP1OWry.png"
+            alt="Emgage"
+            class="app-logo"
+          />
+          <div class="time-label">Work Hours Manager</div>
+        </div>
+        <div class="mode-toggle">
+          <button id="modeNet" class="mode-btn active">Net Hours</button>
+          <button id="modePunch" class="mode-btn">Punch In/Out</button>
+        </div>
+        <select id="dayType" class="time-select">
+          <option value="510">Full Day (08:30 Hour)</option>
+          <option value="480">Full Day (08:00 Hour)</option>
+          <option value="255">Half Day (04:15 Hour)</option>
+        </select>
+      </div>
+
+      <div id="pageNote" class="page-note hidden">
+        You are not on the supported timesheet page.
+      </div>
+
+      <div class="timesheet-container" id="cardsContainer"></div>
+
+      <div class="time-summary-layout popup-summary">
+        <div class="summary-panel">
+          <div class="panel-title">Work Time Summary</div>
+
+          <div class="summary-values">
+            <div class="summary-item">
+              <span>Total Time</span>
+              <strong id="totalTime">00:00</strong>
+            </div>
+            <div class="summary-item">
+              <span>Finish At</span>
+              <strong id="punchFinishTime">--</strong>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="completed-panel">
+          <div class="panel-title">Completed Working Hours</div>
+
+          <div class="summary-values">
+            <div class="summary-item">
+              <span>Completed Duration (HH:mm)</span>
+              <input
+                id="completedDuration"
+                type="text"
+                placeholder="HH:mm"
+                maxlength="5"
+              />
+            </div>
+          </div>
+
+          <div class="summary-item" style="margin-top: 10px">
+            <span>Finish At</span>
+            <strong id="finishTime">--</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="utils.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
