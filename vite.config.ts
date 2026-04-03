@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "https://ett.nowonlinetech.in",
+        target: "https://ett2.nowonlinetech.in",
         changeOrigin: true,
       },
     },
