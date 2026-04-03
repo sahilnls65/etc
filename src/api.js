@@ -1,4 +1,6 @@
-const API_BASE = "/api";
+const API_BASE = import.meta.env.PROD
+  ? "https://ett2.nowonlinetech.in/api"
+  : "/api";
 
 /** Get stored auth token */
 export function getToken() {
