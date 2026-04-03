@@ -14,6 +14,9 @@ const { startCron } = require("./services/cron");
 
 const app = express();
 
+// Trust proxy (behind Nginx/PM2)
+app.set("trust proxy", 1);
+
 // --- Security ---
 app.use(helmet());
 app.use(
@@ -51,12 +54,15 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-// --- Serve frontend in production ---
+// --- Serve frontend in production (if dist exists) ---
+const fs = require("fs");
 const distPath = path.join(__dirname, "../dist");
-app.use(express.static(distPath));
-app.get("*", (req, res) => {
-  res.sendFile(path.join(distPath, "index.html"));
-});
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+}
 
 // --- Start ---
 async function start() {
