@@ -26,14 +26,14 @@ function startCron() {
   });
 
   // Also run once on startup (after a short delay to let DB connect)
-  setTimeout(async () => {
-    console.log("[Cron] Running initial sync...");
-    try {
-      await syncAttendance();
-    } catch (err) {
-      console.error("[Cron] Initial sync failed:", err.message);
-    }
-  }, 3000);
+  // setTimeout(async () => {
+  //   console.log("[Cron] Running initial sync...");
+  //   try {
+  //     await syncAttendance();
+  //   } catch (err) {
+  //     console.error("[Cron] Initial sync failed:", err.message);
+  //   }
+  // }, 3000);
 }
 
 function stopCron() {
