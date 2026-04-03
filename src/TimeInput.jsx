@@ -39,6 +39,8 @@ const from12h = (hours, minutes, period) => {
 function TimeInput({ value, onChange, is24h, name, disabled, tabIndex }) {
   const minuteRef = useRef(null);
   const hourRef = useRef(null);
+  // Track whether we are syncing from parent to avoid clearing race
+  const syncingRef = useRef(false);
 
   // --- 24h mode: simple text input with auto-colon ---
   const [text24, setText24] = useState(() => value || "");
@@ -49,8 +51,12 @@ function TimeInput({ value, onChange, is24h, name, disabled, tabIndex }) {
   // Sync from parent value when it changes externally (e.g. "Now" button, clear)
   // Also re-derive when is24h toggles so both display states stay in sync
   useEffect(() => {
+    syncingRef.current = true;
     setText24(value || "");
     setParts12(to12h(value));
+    // Reset the flag after React processes the state updates
+    const id = setTimeout(() => { syncingRef.current = false; }, 0);
+    return () => clearTimeout(id);
   }, [value, is24h]);
 
   // Emit 24h value to parent
@@ -108,6 +114,11 @@ function TimeInput({ value, onChange, is24h, name, disabled, tabIndex }) {
         emit(val);
         setText24(val);
       }
+      // If user cleared hours and minutes are also empty, emit clear
+      if (raw === "" && next.minutes === "") {
+        emit("");
+        setText24("");
+      }
     }
   };
 
@@ -122,6 +133,11 @@ function TimeInput({ value, onChange, is24h, name, disabled, tabIndex }) {
         const val = from12h(next.hours, raw, next.period);
         emit(val);
         setText24(val);
+      }
+      // If user cleared minutes and hours are also empty, emit clear
+      if (raw === "" && next.hours === "") {
+        emit("");
+        setText24("");
       }
     }
   };
@@ -143,14 +159,6 @@ function TimeInput({ value, onChange, is24h, name, disabled, tabIndex }) {
       hourRef.current.focus();
     }
   };
-
-  // Handle clear: if both fields empty, emit empty
-  useEffect(() => {
-    if (!is24h && parts12.hours === "" && parts12.minutes === "") {
-      // If parent still has a value, clear it
-      if (value) emit("");
-    }
-  }, [parts12.hours, parts12.minutes, is24h, value, emit]);
 
   if (is24h) {
     return (

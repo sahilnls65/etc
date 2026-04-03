@@ -175,6 +175,20 @@ body {
   line-height: 1;
 }
 
+.hero-countdown {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--slate-900);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.hero-countdown-done {
+  color: var(--green);
+  font-size: 20px;
+}
+
 .hero-sub {
   font-size: 10px;
   color: var(--slate-400);
@@ -345,15 +359,77 @@ body {
 .custom-input.input-error, .input-error { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.1) !important; }
 
 /* ============================================================
+   TAB NAVIGATION
+   ============================================================ */
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  background: var(--slate-100);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  border: 1px solid var(--slate-200);
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--slate-400);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: var(--slate-600);
+  background: rgba(255,255,255,0.5);
+}
+
+.tab-btn.tab-active {
+  background: #fff;
+  color: var(--blue);
+  box-shadow: var(--shadow-sm);
+}
+
+.tab-btn svg {
+  flex-shrink: 0;
+}
+
+/* ============================================================
    SECTIONS
    ============================================================ */
 .section { display: flex; flex-direction: column; gap: 16px; }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 
 .section-title {
   font-size: 16px;
   font-weight: 700;
   color: var(--slate-700);
 }
+
+.ctrl-add-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--blue);
+  border-color: rgba(79,110,247,0.2);
+}
+.ctrl-add-pair:hover { background: var(--blue-light); }
 
 /* ============================================================
    PUNCH CARDS
@@ -645,6 +721,229 @@ body {
 .btn-pill-ghost:hover { background: var(--slate-200); }
 
 .error-msg { font-size: 11px; color: var(--red); font-weight: 500; }
+
+/* ============================================================
+   LOGIN PAGE
+   ============================================================ */
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 50%, #faf5ff 100%);
+  padding: 24px;
+}
+
+.login-card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border: 1px solid rgba(79,110,247,0.08);
+}
+
+.login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.login-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.login-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--slate-900);
+  letter-spacing: -0.02em;
+}
+
+.login-sub {
+  font-size: 13px;
+  color: var(--slate-400);
+  margin-top: -4px;
+}
+
+.login-error {
+  background: var(--red-light);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: var(--radius-xs);
+  text-align: center;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.login-input {
+  padding: 10px 14px;
+  border-radius: var(--radius-xs);
+  border: 1.5px solid var(--slate-200);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--slate-800);
+  background: var(--slate-50);
+  outline: none;
+  transition: border-color var(--transition), background var(--transition);
+}
+.login-input:focus {
+  border-color: var(--blue);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(79,110,247,0.1);
+}
+.login-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-btn {
+  padding: 12px;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: linear-gradient(135deg, #4f6ef7, #8b5cf6);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
+  margin-top: 4px;
+}
+.login-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+.login-btn:active { transform: translateY(0); }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* Login Modal Overlay */
+.login-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15,23,42,0.5);
+  backdrop-filter: blur(6px);
+  padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.login-modal-overlay .login-card {
+  position: relative;
+  animation: slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--slate-400);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: var(--transition);
+  line-height: 1;
+}
+.login-close:hover { background: var(--slate-100); color: var(--slate-700); }
+
+/* ============================================================
+   READ-ONLY PUNCH DISPLAY & MISC
+   ============================================================ */
+.pf-readonly {
+  background: var(--slate-50);
+  border-color: transparent;
+}
+
+.pf-time {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--slate-800);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  padding: 4px 0;
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 14px;
+  border-radius: 100px;
+  background: var(--blue-light);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.empty-state {
+  background: #fff;
+  border-radius: var(--radius-sm);
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--slate-400);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow);
+  border: 1.5px dashed var(--slate-200);
+}
+
+.fetch-error {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--red);
+  margin-left: 12px;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.app-footer {
+  text-align: center;
+  padding: 16px 0 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--slate-400);
+  letter-spacing: 0.01em;
+}
 
 /* ============================================================
    RESPONSIVE

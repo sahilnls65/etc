@@ -1,23 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { FaPlus, FaTrashAlt } from "react-icons/fa";
 import { RxCross2 } from "react-icons/rx";
 import { IoCloseCircle } from "react-icons/io5";
 import Loader from "./Loader";
+import Login from "./Login";
 import TimeInput from "./TimeInput";
+import { isLoggedIn, getUser, fetchPunches, logout } from "./api";
 
 import "./styles.css";
 
-const DEFAULT_PAIRS = 6;
 const DEFAULT_DAY_TYPE = 510;
-
-const createInitialTimes = (pairs = DEFAULT_PAIRS) => {
-  const data = {};
-  for (let i = 1; i <= pairs; i++) {
-    data[`in${i}`] = "";
-    data[`out${i}`] = "";
-  }
-  return data;
-};
 
 const dayOption = [
   { key: "Full Day (08:30)", value: 510 },
@@ -49,11 +41,6 @@ const formatTimeDisplay = (hours, minutes, is24h) => {
 const formatDateTimeDisplay = (date, is24h) =>
   formatTimeDisplay(date.getHours(), date.getMinutes(), is24h);
 
-const getCurrentHHMM = () => {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-};
-
 const getTodayKey = () => new Date().toISOString().split("T")[0];
 
 const parseTimeToMinutes = (timeStr) => {
@@ -63,44 +50,26 @@ const parseTimeToMinutes = (timeStr) => {
   return h * 60 + m;
 };
 
+const EMPTY_PAIR = { in: "", out: "" };
+const STORAGE_KEY = "etc_local_pairs";
+
 // --- Core Calculation ---
 
-const computeTimeData = (times, dayTypeMinutes, is24h) => {
+const computeTimeData = (pairs, dayTypeMinutes, is24h) => {
   let totalPunchMinutes = 0;
   let lastEntryType = null;
   let lastInTime = null;
-  const missingFields = {};
-  const pairCount = Object.keys(times).length / 2;
 
-  for (let i = 1; i <= pairCount; i++) {
-    const inTime = times[`in${i}`];
-    const outTime = times[`out${i}`];
-    if (inTime && outTime) {
-      const inMin = parseTimeToMinutes(inTime);
-      const outMin = parseTimeToMinutes(outTime);
+  for (const pair of pairs) {
+    if (pair.in && pair.out) {
+      const inMin = parseTimeToMinutes(pair.in);
+      const outMin = parseTimeToMinutes(pair.out);
       if (inMin !== null && outMin !== null && outMin > inMin) {
         totalPunchMinutes += outMin - inMin;
       }
-    } else if (inTime && !outTime) {
-      missingFields[`out${i}`] = true;
-    } else if (!inTime && outTime) {
-      missingFields[`in${i}`] = true;
     }
-  }
-
-  const entries = Object.entries(times);
-  for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i][1]) {
-      lastEntryType = entries[i][0].startsWith("in") ? "in" : "out";
-      break;
-    }
-  }
-
-  for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i][0].startsWith("in") && entries[i][1]) {
-      lastInTime = entries[i][1];
-      break;
-    }
+    if (pair.out) lastEntryType = "out";
+    else if (pair.in) { lastEntryType = "in"; lastInTime = pair.in; }
   }
 
   let liveTotalMinutes = totalPunchMinutes;
@@ -125,7 +94,7 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
       const finishMin = lastInMin + (liveTotalMinutes - totalPunchMinutes) + remaining;
       finishTime = formatTimeDisplay(Math.floor(finishMin / 60), finishMin % 60, is24h);
     }
-  } else if (lastEntryType === "out" || lastEntryType === null) {
+  } else {
     const now = new Date();
     const finishDate = new Date(now.getTime() + remaining * 60000);
     finishTime = formatDateTimeDisplay(finishDate, is24h);
@@ -134,10 +103,11 @@ const computeTimeData = (times, dayTypeMinutes, is24h) => {
   const isCompleted = liveTotalMinutes >= dayTypeMinutes;
   const progressPercent = Math.min(100, (liveTotalMinutes / dayTypeMinutes) * 100);
 
-  return { totalPunchMinutes, liveTotalMinutes, missingFields, lastEntryType, finishTime, isCompleted, progressPercent, remaining };
+  return { totalPunchMinutes, liveTotalMinutes, lastEntryType, finishTime, isCompleted, progressPercent, remaining };
 };
 
-// --- Circular Progress ---
+// --- Sub-components ---
+
 function CircularProgress({ percent, isCompleted, isActive }) {
   const r = 54;
   const circ = 2 * Math.PI * r;
@@ -145,17 +115,12 @@ function CircularProgress({ percent, isCompleted, isActive }) {
   return (
     <svg className="circle-progress" viewBox="0 0 120 120">
       <circle className="circle-bg" cx="60" cy="60" r={r} />
-      <circle
-        className={`circle-fill ${isCompleted ? "circle-done" : ""} ${isActive ? "circle-active" : ""}`}
-        cx="60" cy="60" r={r}
-        strokeDasharray={circ}
-        strokeDashoffset={offset}
-      />
+      <circle className={`circle-fill ${isCompleted ? "circle-done" : ""} ${isActive ? "circle-active" : ""}`}
+        cx="60" cy="60" r={r} strokeDasharray={circ} strokeDashoffset={offset} />
     </svg>
   );
 }
 
-// --- Status Badge ---
 function StatusBadge({ lastEntryType, isCompleted }) {
   if (isCompleted) return <span className="status-badge status-done">Completed</span>;
   if (lastEntryType === "in") return <span className="status-badge status-active">Working</span>;
@@ -163,7 +128,6 @@ function StatusBadge({ lastEntryType, isCompleted }) {
   return <span className="status-badge status-idle">Idle</span>;
 }
 
-// --- Live Clock ---
 function LiveClock({ is24h }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -173,13 +137,73 @@ function LiveClock({ is24h }) {
   return <span className="live-clock">{formatDateTimeDisplay(now, is24h)}</span>;
 }
 
-// --- App ---
+function LiveCountdown({ remaining, isCompleted, lastEntryType }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  // Reset seconds counter whenever remaining changes (new minute tick)
+  useEffect(() => { setSecs(0); }, [remaining]);
+
+  if (isCompleted) return <span className="hero-countdown hero-countdown-done">Done!</span>;
+
+  // If paused/idle, just show remaining as-is (no seconds tick)
+  const isActive = lastEntryType === "in";
+  const totalSecs = isActive ? Math.max(0, remaining * 60 - secs) : remaining * 60;
+
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+
+  const display = h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+
+  return <span className={`hero-countdown ${totalSecs <= 0 ? "hero-countdown-done" : ""}`}>{totalSecs <= 0 ? "Done!" : display}</span>;
+}
+
+// --- Main App ---
 
 function App() {
   const [loading, setLoading] = useState(true);
-  const [times, setTimes] = useState(createInitialTimes());
+
+  // Auth state
+  const [authed, setAuthed] = useState(false);
+  const [user, setUser] = useState(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
+  // Tab navigation for logged-in users: "machine" or "calculator"
+  const [activeTab, setActiveTab] = useState("machine");
+
+  // Secret login: 5 rapid clicks on title
+  const titleClicksRef = useRef([]);
+
+  // Remote punch data (API mode)
+  const [remotePairs, setRemotePairs] = useState([]);
+  const [fetchError, setFetchError] = useState("");
+  const [fetchingPunches, setFetchingPunches] = useState(false);
+
+  // Local manual pairs (always available for calculator)
+  const [localPairs, setLocalPairs] = useState(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const data = stored ? JSON.parse(stored) : null;
+      if (data && data.date === getTodayKey() && Array.isArray(data.pairs)) return data.pairs;
+    } catch {}
+    return Array.from({ length: 6 }, () => ({ ...EMPTY_PAIR }));
+  });
+
+  // Which pairs to use for the hero dashboard
+  const isOnMachineTab = authed && activeTab === "machine";
+  const activePairs = isOnMachineTab ? remotePairs : localPairs;
+
+  // Settings
   const [dayOptions, setDayOptions] = useState(dayOption);
-  const [dayType, setDayType] = useState(DEFAULT_DAY_TYPE);
+  const [dayType, setDayType] = useState(() => {
+    const s = localStorage.getItem("etc_dayType");
+    return s ? Number(s) : DEFAULT_DAY_TYPE;
+  });
   const [is24h, setIs24h] = useState(() => {
     const stored = localStorage.getItem("etc_timeFormat");
     if (stored !== null) return stored === "24";
@@ -187,37 +211,110 @@ function App() {
     return !test.includes("AM") && !test.includes("PM");
   });
   const [customWorkingHours, setCustomWorkingHours] = useState({ time: "", visible: false, error: false });
+
+  // Manual entry
   const [completedDuration, setCompletedDuration] = useState("");
   const [remainingFinishTime, setRemainingFinishTime] = useState("");
   const [completedError, setCompletedError] = useState(false);
+
   const [tick, setTick] = useState(0);
 
-  const computed = useMemo(() => computeTimeData(times, dayType, is24h), [times, dayType, is24h, tick]);
+  const computed = useMemo(() => computeTimeData(activePairs, dayType, is24h), [activePairs, dayType, is24h, tick]);
 
-  const saveTimesToStorage = useCallback((t) => { localStorage.setItem("etc_times", JSON.stringify(t)); }, []);
-
-  const clearAllData = useCallback(() => {
-    setTimes(createInitialTimes());
-    localStorage.removeItem("etc_times");
-    setCompletedDuration("");
-    setRemainingFinishTime("");
-    setCompletedError(false);
+  // --- Auth check ---
+  useEffect(() => {
+    if (isLoggedIn()) {
+      setAuthed(true);
+      setUser(getUser());
+    }
+    setTimeout(() => setLoading(false), 500);
   }, []);
 
-  const handleInputChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setTimes((prev) => { const u = { ...prev, [name]: value }; saveTimesToStorage(u); return u; });
-  }, [saveTimesToStorage]);
+  // --- Save local pairs to localStorage ---
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ date: getTodayKey(), pairs: localPairs }));
+  }, [localPairs]);
 
-  const addCurrentTime = useCallback((name) => {
-    const t = getCurrentHHMM();
-    setTimes((prev) => { const u = { ...prev, [name]: t }; saveTimesToStorage(u); return u; });
-  }, [saveTimesToStorage]);
+  // --- Fetch punches from API (remote mode) ---
+  const loadPunches = useCallback(async () => {
+    if (!isLoggedIn()) return;
+    setFetchingPunches(true);
+    setFetchError("");
+    try {
+      const data = await fetchPunches(getTodayKey());
+      setRemotePairs(data.pairs || []);
+    } catch (err) {
+      setFetchError(err.message);
+    } finally {
+      setFetchingPunches(false);
+    }
+  }, []);
 
-  const handleClear = useCallback((name) => {
-    setTimes((prev) => { const u = { ...prev, [name]: "" }; saveTimesToStorage(u); return u; });
-  }, [saveTimesToStorage]);
+  // Fetch on login and periodically
+  useEffect(() => {
+    if (!authed) return;
+    loadPunches();
+    const interval = setInterval(() => {
+      loadPunches();
+      setTick((t) => t + 1);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [authed, loadPunches]);
 
+  // Live tick
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- Secret login trigger: 5 rapid clicks on title ---
+  const handleTitleClick = useCallback(() => {
+    const now = Date.now();
+    const clicks = titleClicksRef.current;
+    clicks.push(now);
+    const recent = clicks.filter((t) => now - t < 2000);
+    titleClicksRef.current = recent;
+    if (recent.length >= 5) {
+      titleClicksRef.current = [];
+      if (!authed) {
+        setShowLoginModal(true);
+      }
+    }
+  }, [authed]);
+
+  // --- Local pair management ---
+  const handleLocalTimeChange = useCallback((index, field, value) => {
+    setLocalPairs((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  }, []);
+
+  const handleAddLocalPair = useCallback(() => {
+    setLocalPairs((prev) => [...prev, { ...EMPTY_PAIR }]);
+  }, []);
+
+  const handleRemoveLocalPair = useCallback((index) => {
+    setLocalPairs((prev) => {
+      if (prev.length <= 6) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  const handleSetNow = useCallback((index, field) => {
+    const now = new Date();
+    const val = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    handleLocalTimeChange(index, field, val);
+  }, [handleLocalTimeChange]);
+
+  const handleClearField = useCallback((index, field) => {
+    handleLocalTimeChange(index, field, "");
+  }, [handleLocalTimeChange]);
+
+  const allPairsFilled = localPairs.every((p) => p.in && p.out);
+
+  // --- Settings handlers ---
   const handleDayChange = useCallback((e) => {
     const val = Number(e.target.value);
     setDayType(val);
@@ -228,27 +325,6 @@ function App() {
     setIs24h((prev) => { const n = !prev; localStorage.setItem("etc_timeFormat", n ? "24" : "12"); return n; });
   }, []);
 
-  const addMoreCard = useCallback(() => {
-    setTimes((prev) => {
-      const pc = Object.keys(prev).length / 2;
-      const u = { ...prev, [`in${pc + 1}`]: "", [`out${pc + 1}`]: "" };
-      saveTimesToStorage(u);
-      return u;
-    });
-  }, [saveTimesToStorage]);
-
-  const removeCard = useCallback((pn) => {
-    setTimes((prev) => { const u = { ...prev }; delete u[`in${pn}`]; delete u[`out${pn}`]; saveTimesToStorage(u); return u; });
-  }, [saveTimesToStorage]);
-
-  const isFieldEnabled = useCallback((name) => {
-    const fo = Object.keys(times);
-    const idx = fo.indexOf(name);
-    if (idx === 0) return true;
-    return !!times[fo[idx - 1]];
-  }, [times]);
-
-  // Custom hours
   const handleCustomWorkingHours = useCallback((e) => {
     const input = e.target.value;
     if (/^[0-9:]*$/.test(input)) {
@@ -283,7 +359,6 @@ function App() {
     localStorage.setItem("etc_dayType", DEFAULT_DAY_TYPE);
   }, []);
 
-  // Completed duration
   const handleCompletedDurationChange = useCallback((e) => {
     let v = e.target.value.replace(/[^\d:]/g, "");
     if (v.length === 3 && !v.includes(":")) v = v.slice(0, 2) + ":" + v.slice(2);
@@ -294,74 +369,68 @@ function App() {
     if (!completedDuration) { setRemainingFinishTime(""); return; }
     const parts = completedDuration.split(":").map(Number);
     if (parts.length < 2 || parts.some(isNaN) || parts[1] > 59) { setCompletedError(true); setRemainingFinishTime(""); return; }
-    const completedMin = parts[0] * 60 + parts[1];
-    const rem = dayType - completedMin;
+    const rem = dayType - (parts[0] * 60 + parts[1]);
     if (rem <= 0) { setRemainingFinishTime("Completed"); setCompletedError(false); return; }
     const finish = new Date(Date.now() + rem * 60000);
     setRemainingFinishTime(formatDateTimeDisplay(finish, is24h));
     setCompletedError(false);
   }, [completedDuration, dayType, is24h]);
 
-  // Init
   useEffect(() => {
-    const todayKey = getTodayKey();
-    const storedDate = localStorage.getItem("etc_date");
-    if (storedDate === todayKey) {
-      const st = localStorage.getItem("etc_times");
-      if (st) { try { setTimes(JSON.parse(st)); } catch { /* ignore */ } }
-      const sd = localStorage.getItem("etc_dayType");
-      if (sd) setDayType(Number(sd));
-      const ch = localStorage.getItem("etc_customHours");
-      if (ch) {
-        const [h, m] = ch.split(":").map(Number);
-        setCustomWorkingHours({ visible: true, time: ch, error: false });
-        setDayOptions([...dayOption, { key: `Custom (${ch})`, value: h * 60 + m }]);
-        setDayType(h * 60 + m);
-      }
-    } else {
-      localStorage.removeItem("etc_times");
-      localStorage.setItem("etc_date", todayKey);
+    const ch = localStorage.getItem("etc_customHours");
+    if (ch) {
+      const [h, m] = ch.split(":").map(Number);
+      setCustomWorkingHours({ visible: true, time: ch, error: false });
+      setDayOptions([...dayOption, { key: `Custom (${ch})`, value: h * 60 + m }]);
+      setDayType(h * 60 + m);
     }
-    const lt = setTimeout(() => setLoading(false), 600);
-    const ti = setInterval(() => {
-      setTick((t) => t + 1);
-      if (getTodayKey() !== localStorage.getItem("etc_date")) {
-        localStorage.removeItem("etc_times");
-        localStorage.setItem("etc_date", getTodayKey());
-        setTimes(createInitialTimes());
-      }
-    }, 30000);
-    return () => { clearTimeout(lt); clearInterval(ti); };
   }, []);
 
-  const pairKeys = useMemo(() => {
-    const keys = Object.keys(times);
-    const pairs = [];
-    for (let i = 0; i < keys.length; i += 2) {
-      const ik = keys[i], ok = keys[i + 1];
-      if (ik && ok) pairs.push({ inKey: ik, outKey: ok, num: Number(ik.replace("in", "")) });
-    }
-    return pairs;
-  }, [times]);
+  const formatPunchTime = useCallback((hhmm) => {
+    if (!hhmm) return "--:--";
+    const min = parseTimeToMinutes(hhmm);
+    if (min === null) return hhmm;
+    return formatTimeDisplay(Math.floor(min / 60), min % 60, is24h);
+  }, [is24h]);
 
-  const totalPairs = pairKeys.length;
-  const canAddPair = useMemo(() => {
-    if (!pairKeys.length) return true;
-    const l = pairKeys[pairKeys.length - 1];
-    return !!(times[l.inKey] && times[l.outKey]);
-  }, [pairKeys, times]);
+  const handleLogin = useCallback((u) => {
+    setAuthed(true);
+    setUser(u);
+    setShowLoginModal(false);
+    setActiveTab("machine");
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    logout();
+    setAuthed(false);
+    setUser(null);
+    setRemotePairs([]);
+    setFetchError("");
+    setActiveTab("machine");
+  }, []);
 
   if (loading) return <Loader />;
 
   const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
+  // Determine which view to show
+  const showCalculator = !authed || activeTab === "calculator";
+  const showMachine = authed && activeTab === "machine";
+
   return (
     <div className="app">
+      {/* Login Modal */}
+      {showLoginModal && (
+        <Login onLogin={handleLogin} onClose={() => setShowLoginModal(false)} isModal />
+      )}
+
       {/* ====== HERO DASHBOARD ====== */}
       <section className="hero">
         <div className="hero-top">
           <div className="hero-title-area">
-            <h1 className="hero-title">Time Calculator</h1>
+            <h1 className="hero-title" onClick={handleTitleClick} style={{ cursor: "default", userSelect: "none" }}>
+              Time Calculator
+            </h1>
             <p className="hero-date">{dateStr}</p>
           </div>
           <div className="hero-clock-area">
@@ -371,32 +440,22 @@ function App() {
         </div>
 
         <div className="hero-body">
-          {/* Circular Progress */}
           <div className="hero-progress">
-            <CircularProgress
-              percent={computed.progressPercent}
-              isCompleted={computed.isCompleted}
-              isActive={computed.lastEntryType === "in"}
-            />
+            <CircularProgress percent={computed.progressPercent} isCompleted={computed.isCompleted} isActive={computed.lastEntryType === "in"} />
             <div className="hero-progress-text">
-              <span className="hero-percent">{Math.round(computed.progressPercent)}%</span>
+              <LiveCountdown remaining={computed.remaining} isCompleted={computed.isCompleted} lastEntryType={computed.lastEntryType} />
               <span className="hero-sub">{formatMinutesToHHMM(computed.liveTotalMinutes)} / {formatMinutesToHHMM(dayType)}</span>
             </div>
           </div>
 
-          {/* Key Metrics */}
           <div className="hero-metrics">
             <div className="hero-metric">
               <span className="hm-label">Total Worked</span>
-              <span className={`hm-value ${computed.isCompleted ? "hm-done" : ""}`}>
-                {formatMinutesToHHMM(computed.liveTotalMinutes)}
-              </span>
+              <span className={`hm-value ${computed.isCompleted ? "hm-done" : ""}`}>{formatMinutesToHHMM(computed.liveTotalMinutes)}</span>
             </div>
             <div className="hero-metric">
               <span className="hm-label">Remaining</span>
-              <span className={`hm-value ${computed.isCompleted ? "hm-done" : ""}`}>
-                {computed.remaining <= 0 ? "00:00" : formatMinutesToHHMM(computed.remaining)}
-              </span>
+              <span className={`hm-value ${computed.isCompleted ? "hm-done" : ""}`}>{computed.remaining <= 0 ? "00:00" : formatMinutesToHHMM(computed.remaining)}</span>
             </div>
             <div className="hero-metric hero-metric-accent">
               <span className="hm-label">Finish At</span>
@@ -410,7 +469,7 @@ function App() {
           </div>
         </div>
 
-        {/* Controls strip */}
+        {/* Controls */}
         <div className="hero-controls">
           <button className="fmt-toggle" onClick={toggleTimeFormat} title={`Switch to ${is24h ? "12h" : "24h"}`}>
             <span className={`fmt-opt ${!is24h ? "fmt-on" : ""}`}>12h</span>
@@ -429,103 +488,203 @@ function App() {
               <button className="ctrl-btn ctrl-remove" onClick={handleRemoveCustomTime}><IoCloseCircle size={14} /></button>
             </div>
           ) : (
-            <button className="ctrl-btn-text" onClick={() => setCustomWorkingHours({ visible: true, time: "", error: false })}>
-              + Custom
-            </button>
+            <button className="ctrl-btn-text" onClick={() => setCustomWorkingHours({ visible: true, time: "", error: false })}>+ Custom</button>
           )}
 
           <div className="hero-controls-right">
-            <button className="ctrl-btn-text" onClick={addMoreCard} disabled={!canAddPair}>+ Add Pair</button>
-            <button className="ctrl-btn-text ctrl-refresh" onClick={() => setTick((t) => t + 1)}>Refresh</button>
-            <button className="ctrl-btn-text ctrl-danger" onClick={() => { if (confirm("Clear all punch data?")) clearAllData(); }}>Clear All</button>
+            {authed && (
+              <>
+                {showMachine && (
+                  <button className="ctrl-btn-text ctrl-refresh" onClick={() => { loadPunches(); setTick((t) => t + 1); }}>
+                    {fetchingPunches ? "Syncing..." : "Refresh"}
+                  </button>
+                )}
+                <span className="user-badge">{user?.name || user?.employeeId}</span>
+                <button className="ctrl-btn-text ctrl-danger" onClick={handleLogout}>Logout</button>
+              </>
+            )}
           </div>
         </div>
       </section>
 
-      {/* ====== PUNCH CARDS ====== */}
-      <section className="section">
-        <h2 className="section-title">Punch Entries</h2>
-        <div className="cards-grid">
-          {pairKeys.map(({ inKey, outKey, num }, pi) => {
-            const inE = isFieldEnabled(inKey), outE = isFieldEnabled(outKey);
-            const inV = times[inKey], outV = times[outKey];
-            const inM = computed.missingFields[inKey], outM = computed.missingFields[outKey];
-            const canRm = pi >= DEFAULT_PAIRS && pi === totalPairs - 1;
-            const isLive = inV && !outV && computed.lastEntryType === "in";
+      {/* ====== TAB NAVIGATION (logged in only) ====== */}
+      {authed && (
+        <nav className="tab-nav">
+          <button className={`tab-btn ${activeTab === "machine" ? "tab-active" : ""}`} onClick={() => setActiveTab("machine")}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            Machine Data
+          </button>
+          <button className={`tab-btn ${activeTab === "calculator" ? "tab-active" : ""}`} onClick={() => setActiveTab("calculator")}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="6" x2="16" y2="6" /><line x1="8" y1="10" x2="10" y2="10" /><line x1="14" y1="10" x2="16" y2="10" /><line x1="8" y1="14" x2="10" y2="14" /><line x1="14" y1="14" x2="16" y2="14" /><line x1="8" y1="18" x2="16" y2="18" />
+            </svg>
+            Calculator
+          </button>
+        </nav>
+      )}
 
-            let dur = null;
-            if (inV && outV) {
-              const a = parseTimeToMinutes(inV), b = parseTimeToMinutes(outV);
-              if (a !== null && b !== null && b > a) dur = formatMinutesToHHMM(b - a);
-            }
+      {/* ====== MACHINE DATA TAB (read-only) ====== */}
+      {showMachine && (
+        <section className="section">
+          <div className="section-header">
+            <h2 className="section-title">
+              Punch Entries
+              {fetchError && <span className="fetch-error">{fetchError}</span>}
+            </h2>
+          </div>
 
-            return (
-              <div className={`pair-card ${!inE && !inV ? "pair-disabled" : ""} ${isLive ? "pair-live" : ""}`} key={num}>
-                <div className="pair-top">
-                  <span className="pair-num">#{num}</span>
-                  {dur && <span className="pair-dur">{dur}</span>}
-                  {isLive && <span className="pair-live-dot" />}
-                  {canRm && (
-                    <button className="pair-rm" onClick={() => removeCard(num)} title="Remove"><RxCross2 size={12} /></button>
-                  )}
+          {remotePairs.length === 0 && !fetchingPunches && (
+            <div className="empty-state">No punches recorded today. Data syncs every 15 minutes from the biometric machine.</div>
+          )}
+
+          <div className="cards-grid">
+            {remotePairs.map((pair, i) => {
+              const dur = pair.in && pair.out ? (() => {
+                const a = parseTimeToMinutes(pair.in), b = parseTimeToMinutes(pair.out);
+                return a !== null && b !== null && b > a ? formatMinutesToHHMM(b - a) : null;
+              })() : null;
+              const isLive = pair.in && !pair.out;
+
+              return (
+                <div className={`pair-card ${isLive ? "pair-live" : ""}`} key={i}>
+                  <div className="pair-top">
+                    <span className="pair-num">#{i + 1}</span>
+                    {dur && <span className="pair-dur">{dur}</span>}
+                    {isLive && <span className="pair-live-dot" />}
+                  </div>
+                  <div className="pair-fields">
+                    <div className="pf pf-readonly">
+                      <span className="pf-label pf-in">IN</span>
+                      <span className="pf-time">{formatPunchTime(pair.in)}</span>
+                    </div>
+                    <div className="pair-arrow">&#8594;</div>
+                    <div className="pf pf-readonly">
+                      <span className="pf-label pf-out">OUT</span>
+                      <span className="pf-time">{pair.out ? formatPunchTime(pair.out) : "--:--"}</span>
+                    </div>
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
-                <div className="pair-fields">
-                  <div className={`pf ${inM ? "pf-miss" : ""}`}>
-                    <span className="pf-label pf-in">IN</span>
-                    <TimeInput name={inKey} value={inV} onChange={handleInputChange} is24h={is24h} disabled={!inE} tabIndex={pi * 2 + 1} />
-                    <div className="pf-btns">
-                      <button className="pf-btn pf-now" onClick={() => addCurrentTime(inKey)} disabled={!inE}>Now</button>
-                      <button className="pf-btn pf-clr" onClick={() => handleClear(inKey)} disabled={!inE}><FaTrashAlt size={9} /></button>
+      {/* ====== CALCULATOR TAB (or guest mode) ====== */}
+      {showCalculator && (
+        <>
+          <section className="section">
+            <div className="section-header">
+              <h2 className="section-title">Punch Entries</h2>
+              <button
+                className="ctrl-btn-text ctrl-add-pair"
+                onClick={handleAddLocalPair}
+                disabled={!allPairsFilled}
+                title={!allPairsFilled ? "Fill current pairs first" : "Add new pair"}
+              >
+                <FaPlus size={10} /> Add Pair
+              </button>
+            </div>
+
+            <div className="cards-grid">
+              {localPairs.map((pair, i) => {
+                const dur = pair.in && pair.out ? (() => {
+                  const a = parseTimeToMinutes(pair.in), b = parseTimeToMinutes(pair.out);
+                  return a !== null && b !== null && b > a ? formatMinutesToHHMM(b - a) : null;
+                })() : null;
+                const isLive = pair.in && !pair.out;
+                const isPairDisabled = i > 0 && !(localPairs[i - 1].in && localPairs[i - 1].out);
+
+                return (
+                  <div className={`pair-card ${isLive ? "pair-live" : ""} ${isPairDisabled ? "pair-disabled" : ""}`} key={i}>
+                    <div className="pair-top">
+                      <span className="pair-num">#{i + 1}</span>
+                      {dur && <span className="pair-dur">{dur}</span>}
+                      {isLive && <span className="pair-live-dot" />}
+                      {localPairs.length > 6 && (
+                        <button className="pair-rm" onClick={() => handleRemoveLocalPair(i)} title="Remove pair">
+                          <RxCross2 size={12} />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="pair-fields">
+                      <div className={`pf ${!pair.in && pair.out ? "pf-miss" : ""}`}>
+                        <span className="pf-label pf-in">IN</span>
+                        <TimeInput
+                          name={`in-${i}`}
+                          value={pair.in}
+                          is24h={is24h}
+                          disabled={isPairDisabled}
+                          onChange={(e) => handleLocalTimeChange(i, "in", e.target.value)}
+                        />
+                        <div className="pf-btns">
+                          <button className="pf-btn pf-now" onClick={() => handleSetNow(i, "in")} disabled={isPairDisabled}>Now</button>
+                          <button className="pf-btn pf-clr" onClick={() => handleClearField(i, "in")} disabled={isPairDisabled || !pair.in}>
+                            <RxCross2 size={10} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="pair-arrow">&#8594;</div>
+
+                      <div className="pf">
+                        <span className="pf-label pf-out">OUT</span>
+                        <TimeInput
+                          name={`out-${i}`}
+                          value={pair.out}
+                          is24h={is24h}
+                          disabled={isPairDisabled}
+                          onChange={(e) => handleLocalTimeChange(i, "out", e.target.value)}
+                        />
+                        <div className="pf-btns">
+                          <button className="pf-btn pf-now" onClick={() => handleSetNow(i, "out")} disabled={isPairDisabled}>Now</button>
+                          <button className="pf-btn pf-clr" onClick={() => handleClearField(i, "out")} disabled={isPairDisabled || !pair.out}>
+                            <RxCross2 size={10} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="pair-arrow">&#8594;</div>
-                  <div className={`pf ${outM ? "pf-miss" : ""}`}>
-                    <span className="pf-label pf-out">OUT</span>
-                    <TimeInput name={outKey} value={outV} onChange={handleInputChange} is24h={is24h} disabled={!outE} tabIndex={pi * 2 + 2} />
-                    <div className="pf-btns">
-                      <button className="pf-btn pf-now" onClick={() => addCurrentTime(outKey)} disabled={!outE}>Now</button>
-                      <button className="pf-btn pf-clr" onClick={() => handleClear(outKey)} disabled={!outE}><FaTrashAlt size={9} /></button>
-                    </div>
-                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Manual Entry */}
+          <section className="section">
+            <h2 className="section-title">Manual Entry</h2>
+            <div className="manual-card">
+              <p className="manual-hint">Enter your completed hours from the system to calculate remaining time.</p>
+              <div className="manual-row">
+                <div className="manual-field">
+                  <label className="manual-label">Completed</label>
+                  <input type="text" className={`manual-input ${completedError ? "input-error" : ""} ${remainingFinishTime === "Completed" ? "manual-done" : ""}`}
+                    placeholder="HH:mm" value={completedDuration} onChange={handleCompletedDurationChange} maxLength={5} />
+                </div>
+                <div className="manual-result">
+                  <label className="manual-label">Finish At</label>
+                  <span className={`manual-value ${remainingFinishTime === "Completed" ? "hm-done" : ""}`}>
+                    {completedError || !remainingFinishTime ? "--:--" : remainingFinishTime}
+                  </span>
+                </div>
+                <div className="manual-actions">
+                  <button className="btn-pill btn-pill-primary" onClick={calculateRemainingFinishTime}>Calculate</button>
+                  <button className="btn-pill btn-pill-ghost" onClick={() => { setCompletedDuration(""); setRemainingFinishTime(""); setCompletedError(false); }}>Clear</button>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </section>
+              {completedError && <p className="error-msg">Invalid format — use HH:mm</p>}
+            </div>
+          </section>
+        </>
+      )}
 
-      {/* ====== MANUAL ENTRY ====== */}
-      <section className="section">
-        <h2 className="section-title">Manual Entry</h2>
-        <div className="manual-card">
-          <p className="manual-hint">Enter your completed hours from the system to calculate remaining time.</p>
-          <div className="manual-row">
-            <div className="manual-field">
-              <label className="manual-label">Completed</label>
-              <input
-                type="text"
-                className={`manual-input ${completedError ? "input-error" : ""} ${remainingFinishTime === "Completed" ? "manual-done" : ""}`}
-                placeholder="HH:mm"
-                value={completedDuration}
-                onChange={handleCompletedDurationChange}
-                maxLength={5}
-              />
-            </div>
-            <div className="manual-result">
-              <label className="manual-label">Finish At</label>
-              <span className={`manual-value ${remainingFinishTime === "Completed" ? "hm-done" : ""}`}>
-                {completedError || !remainingFinishTime ? "--:--" : remainingFinishTime}
-              </span>
-            </div>
-            <div className="manual-actions">
-              <button className="btn-pill btn-pill-primary" onClick={calculateRemainingFinishTime}>Calculate</button>
-              <button className="btn-pill btn-pill-ghost" onClick={() => { setCompletedDuration(""); setRemainingFinishTime(""); setCompletedError(false); }}>Clear</button>
-            </div>
-          </div>
-          {completedError && <p className="error-msg">Invalid format — use HH:mm</p>}
-        </div>
-      </section>
+      {/* Footer */}
+      <footer className="app-footer">
+        &copy; {new Date().getFullYear()} Sahil Trambadiya. All rights reserved.
+      </footer>
     </div>
   );
 }
