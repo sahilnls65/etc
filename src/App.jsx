@@ -41,7 +41,24 @@ const formatTimeDisplay = (hours, minutes, is24h) => {
 const formatDateTimeDisplay = (date, is24h) =>
   formatTimeDisplay(date.getHours(), date.getMinutes(), is24h);
 
-const getTodayKey = () => new Date().toISOString().split("T")[0];
+const getTodayKey = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+/** Convert ISO timestamp or "HH:mm" to "HH:mm" in local timezone */
+const toLocalHHMM = (val) => {
+  if (!val) return "";
+  // Already "HH:mm" format (local pairs)
+  if (/^\d{2}:\d{2}$/.test(val)) return val;
+  // ISO timestamp from API — convert to local
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return val;
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr || !timeStr.includes(":")) return null;
@@ -242,7 +259,12 @@ function App() {
     setFetchError("");
     try {
       const data = await fetchPunches(getTodayKey());
-      setRemotePairs(data.pairs || []);
+      // Convert ISO timestamps to local "HH:mm"
+      const localizedPairs = (data.pairs || []).map((p) => ({
+        in: toLocalHHMM(p.in),
+        out: toLocalHHMM(p.out),
+      }));
+      setRemotePairs(localizedPairs);
     } catch (err) {
       setFetchError(err.message);
     } finally {

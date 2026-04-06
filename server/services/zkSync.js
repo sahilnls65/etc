@@ -1,6 +1,10 @@
 const ZKLib = require("zklib");
+const { DateTime } = require("luxon");
 const Punch = require("../models/Punch");
 const config = require("../config");
+
+// ZK machines are in IST — always use IST for date filtering
+const IST = "Asia/Kolkata";
 
 /**
  * Connect to a ZKTeco machine and fetch attendance logs.
@@ -28,6 +32,31 @@ function fetchAttendance(ip) {
 }
 
 /**
+ * Convert a ZK machine timestamp to a proper UTC Date.
+ * ZK machines store local IST time. zklib creates Date objects using
+ * the server's timezone, which may not be IST. This function extracts
+ * the raw hour/minute/second values and reinterprets them as IST,
+ * then converts to UTC for correct MongoDB storage.
+ */
+function zkTimestampToUTC(rawTimestamp) {
+  const d = new Date(rawTimestamp);
+  // Extract the wall-clock components (these represent IST time on the machine)
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const hour = d.getHours();
+  const minute = d.getMinutes();
+  const second = d.getSeconds();
+
+  // Rebuild as IST, then convert to JS Date (UTC internally)
+  const istDt = DateTime.fromObject(
+    { year, month, day, hour, minute, second },
+    { zone: IST }
+  );
+  return istDt.toJSDate();
+}
+
+/**
  * Sync attendance from both IN and OUT machines.
  * Fetches today's logs, deduplicates against DB, and inserts new punches.
  * Returns { inserted, skipped } counts.
@@ -49,24 +78,34 @@ async function syncAttendance() {
     // Continue with whatever we got — partial sync is better than no sync
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Use IST date for "today" filtering (not UTC)
+  const todayIST = DateTime.now().setZone(IST).toFormat("yyyy-MM-dd");
 
-  // Filter to today's logs only
-  const todayIn = inLogs.filter(
-    (log) => new Date(log.timestamp).toISOString().slice(0, 10) === today
-  );
-  const todayOut = outLogs.filter(
-    (log) => new Date(log.timestamp).toISOString().slice(0, 10) === today
-  );
+  // Filter to today's logs only (compare in IST)
+  const isToday = (rawTimestamp) => {
+    const d = new Date(rawTimestamp);
+    const dtIST = DateTime.fromObject(
+      {
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+      },
+      { zone: IST }
+    );
+    return dtIST.toFormat("yyyy-MM-dd") === todayIST;
+  };
 
-  // Build punch records
+  const todayIn = inLogs.filter((log) => isToday(log.timestamp));
+  const todayOut = outLogs.filter((log) => isToday(log.timestamp));
+
+  // Build punch records with proper UTC timestamps
   const punchRecords = [];
 
   for (const log of todayIn) {
     punchRecords.push({
       employeeId: String(log.id),
       type: "in",
-      timestamp: new Date(log.timestamp),
+      timestamp: zkTimestampToUTC(log.timestamp),
       machineIp: config.zk.inIp,
     });
   }
@@ -75,7 +114,7 @@ async function syncAttendance() {
     punchRecords.push({
       employeeId: String(log.id),
       type: "out",
-      timestamp: new Date(log.timestamp),
+      timestamp: zkTimestampToUTC(log.timestamp),
       machineIp: config.zk.outIp,
     });
   }
