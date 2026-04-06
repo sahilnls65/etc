@@ -12,10 +12,22 @@ function startCron() {
 
   console.log(`[Cron] Scheduling ZK sync: "${config.cron.schedule}"`);
 
+  const { DateTime } = require("luxon");
+
   task = cron.schedule(config.cron.schedule, async () => {
-    const hour = new Date().getHours();
-    if (hour >= 0 && hour < 8) {
-      console.log(`[Cron] Skipping sync — outside working hours (${hour}:00)`);
+    // Use Indian Standard Time (IST = UTC+5:30)
+    const nowIST = DateTime.now().setZone("Asia/Kolkata");
+    const hour = nowIST.hour;
+    const day = nowIST.weekday; // 1 = Monday, ..., 7 = Sunday
+
+    // Exclude Saturday (6) and Sunday (7)
+    if (day === 6 || day === 7) {
+      console.log(`[Cron] Skipping sync — Weekend (${nowIST.toFormat("cccc")})`);
+      return;
+    }
+    // Only run between 8:00 - 23:59 IST (exclude 0-7)
+    if (hour < 8) {
+      console.log(`[Cron] Skipping sync — outside working hours (${hour}:00 IST)`);
       return;
     }
     try {
