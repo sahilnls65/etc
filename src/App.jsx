@@ -9,7 +9,7 @@ import { isLoggedIn, getUser, fetchPunches, logout } from "./api";
 
 import "./styles.css";
 
-const DEFAULT_DAY_TYPE = 510;
+const DEFAULT_DAY_TYPE = 480;
 
 const dayOption = [
   { key: "Full Day (08:30)", value: 510 },
