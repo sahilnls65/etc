@@ -10,6 +10,7 @@ const config = require("./config");
 const connectDB = require("./db");
 const authRoutes = require("./routes/auth");
 const punchRoutes = require("./routes/punches");
+const webhookRoutes = require("./routes/webhook");
 const { startCron } = require("./services/cron");
 
 const app = express();
@@ -48,6 +49,12 @@ const loginLimiter = rateLimit({
 // --- Routes ---
 app.use("/api/auth", loginLimiter, authRoutes);
 app.use("/api/punches", apiLimiter, punchRoutes);
+if (config.webhook.enabled) {
+  app.use("/api/webhook", apiLimiter, webhookRoutes);
+  console.log("[Server] Webhook endpoint enabled");
+} else {
+  console.log("[Server] Webhook endpoint disabled");
+}
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -67,7 +74,13 @@ if (fs.existsSync(distPath)) {
 // --- Start ---
 async function start() {
   await connectDB();
-  startCron();
+
+  if (config.cron.enabled) {
+    startCron();
+    console.log("[Server] Cron sync enabled");
+  } else {
+    console.log("[Server] Cron sync disabled");
+  }
 
   app.listen(config.port, () => {
     console.log(`[Server] Running on http://localhost:${config.port}`);

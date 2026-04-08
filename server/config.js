@@ -17,6 +17,12 @@ module.exports = {
   },
 
   cron: {
+    enabled: process.env.CRON_ENABLED !== "false", // default: true
     schedule: process.env.CRON_SCHEDULE || "*/15 * * * *",
+  },
+
+  webhook: {
+    enabled: process.env.WEBHOOK_ENABLED !== "false", // default: true
+    secret: process.env.WEBHOOK_SECRET || "",
   },
 };
